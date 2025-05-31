@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# IDE / OS specific
+.DS_Store
+*.log
+.vscode/
+
+# Local save file (actual save is in ~/.stone-crafter.json)
+# but good to ignore any local test copies.
+stone-crafter.json
+.stone-crafter.json
