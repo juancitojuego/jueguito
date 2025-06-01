@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stone-Crafter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Stone-Crafter</h1>
+
+    <div id="main-game-section">
+        <section id="current-stone-display">
+            <h2>Current Stone</h2>
+            <div id="stone-visual-representation">
+                <!-- Stone picture will be displayed here -->
+            </div>
+            <div id="stone-details">
+                <p>Seed: <span id="stone-seed"></span></p>
+                <p>Color: <span id="stone-color"></span></p>
+                <p>Shape: <span id="stone-shape"></span></p>
+                <p>Rarity: <span id="stone-rarity"></span></p>
+                <p>Hardness: <span id="stone-hardness"></span></p>
+                <p>Weight: <span id="stone-weight"></span></p>
+            </div>
+        </section>
+
+        <section id="game-actions">
+            <h2>Game Actions</h2>
+            <button id="open-stone-button">Open Stone</button>
+            <button id="salvage-stone-button">Salvage Stone</button>
+            <button id="inventory-button">Show Inventory</button>
+        </section>
+    </div>
+
+    <div id="message-area">
+        <span id="message-line">Game messages appear here.</span> <span id="currency-display">Currency: 0</span>
+    </div>
+
+    <section id="inventory-section" style="display: none;">
+        <h2>Inventory</h2>
+        <div id="inventory-list">
+            <!-- Owned stones will be displayed here -->
+        </div>
+        <button id="close-inventory-button">Close Inventory</button>
+    </section>
+
+    <section id="initial-setup-section">
+        <h2>Initial Setup</h2>
+        <input type="text" id="seed-input" placeholder="Enter initial seed">
+        <button id="start-game-button">Start Game / New Game with Seed</button>
+        <button id="start-random-game-button">Start New Random Game</button>
+    </section>
+
+    <script src="script.js"></script>
+</body>
+</html>
