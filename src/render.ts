@@ -3,12 +3,10 @@
 import chalk from 'chalk';
 import { StoneQualities, SHAPES } from './stone';
 
-const ART_HEIGHT = 25; // New larger height
-const ART_WIDTH = 50;  // New larger width
+const ART_HEIGHT = 25;
+const ART_WIDTH = 50;
 
-// Helper to strip ANSI codes (for length calculation)
 function stripAnsi(str: string): string {
-  // eslint-disable-next-line no-control-regex
   return str.replace(/[\u001B\u009B][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 }
 
@@ -51,21 +49,18 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
   switch (shape) {
     case SHAPES[0]: // Cube - Larger and more detailed
       shapeArtLines = [
-        // Top face (lighter) - with perspective
         "        "+c(20,chars.quarter).repeat(18),
         "       "+c(20,chars.half)+c(15,chars.full).repeat(16)+c(20,chars.half),
         "      "+c(20,chars.half)+c(15,chars.full)+" ".repeat(14)+c(15,chars.full)+c(20,chars.half),
         "     "+c(20,chars.threeQuarters)+c(15,chars.full)+" ".repeat(14)+c(15,chars.full)+c(20,chars.threeQuarters),
-        "    "+c(20,chars.full)+c(15,chars.full).repeat(16)+c(20,chars.full), // Top edge highlight
-        // Front face (medium) and Side face (darker)
+        "    "+c(20,chars.full)+c(15,chars.full).repeat(16)+c(20,chars.full),
         "   "+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
         "  "+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
         " "+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
         ""+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
-        ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6), // Bottom front slightly darker
         ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6),
         ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6),
-        // Bottom perspective (very dark)
+        ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6),
         "    "+c(-20,chars.full)+c(-15,chars.full).repeat(16)+c(-20,chars.full),
       ];
       break;
@@ -78,7 +73,7 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
         "    "+c(10,chars.full)+c(15,chars.full)+c(20,chars.full)+c(20,chars.full)+c(20,chars.full)+c(15,chars.full)+c(10,chars.full)+"    ",
         "  "+c(5,chars.full)+c(10,chars.full)+c(15,chars.full)+c(15,chars.full)+c(15,chars.full)+c(15,chars.full)+c(10,chars.full)+c(5,chars.full)+"  ",
         " "+c(0,chars.full)+c(5,chars.full)+c(10,chars.full)+c(10,chars.full)+c(10,chars.full)+c(10,chars.full)+c(5,chars.full)+c(0,chars.full)+" ",
-        " "+c(-5,chars.full)+c(0,chars.full)+c(5,chars.full)+c(5,chars.full)+c(5,chars.full)+c(0,chars.full)+c(-5,chars.full)+" ", // Shadow area starts
+        " "+c(-5,chars.full)+c(0,chars.full)+c(5,chars.full)+c(5,chars.full)+c(5,chars.full)+c(0,chars.full)+c(-5,chars.full)+" ",
         "  "+c(-10,chars.full)+c(-5,chars.full)+c(0,chars.full)+c(0,chars.full)+c(0,chars.full)+c(-5,chars.full)+c(-10,chars.full)+"  ",
         "    "+c(-15,chars.full)+c(-10,chars.full)+c(-5,chars.full)+c(-5,chars.full)+c(-10,chars.full)+c(-15,chars.full)+"    ",
         "      "+c(-20,chars.threeQuarters)+c(-15,chars.full)+c(-10,chars.full)+c(-15,chars.full)+c(-20,chars.threeQuarters)+"      ",
@@ -88,26 +83,22 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
       break;
 
     case SHAPES[2]: // Pyramid - Larger
-      const pyrWidth = 17; // Base width for this pyramid art
+      const pyrWidth = 17;
       shapeArtLines = [];
       for (let i = 0; i < Math.ceil(pyrWidth / 2) ; i++) {
           const numChars = i * 2 + 1;
-          const sidePadding = " ".repeat(Math.floor((pyrWidth - numChars) / 2));
-          // Lightness decreases towards the base, increases towards the top/center for highlight
-          const lightOffset = 15 - i * 5; // Top is lighter
-          let line = sidePadding;
+          const sidePaddingText = " ".repeat(Math.floor((pyrWidth - numChars) / 2)); // Renamed to avoid conflict
+          const lightOffset = 15 - i * 5;
+          let line = sidePaddingText;
           for (let j = 0; j < numChars; j++) {
-              // Shading from center to edges
               const distFromCenter = Math.abs(j - Math.floor(numChars / 2));
               const charLightOffset = lightOffset - distFromCenter * 5;
               line += c(charLightOffset, chars.full);
           }
-          line += sidePadding;
+          line += sidePaddingText;
           shapeArtLines.push(line);
       }
-      // Add a solid base line, slightly darker
       shapeArtLines.push(c(-15,chars.full).repeat(pyrWidth));
-      // Example, make it taller by adding more layers
       const extraLayers = 3;
       for(let i=0; i < extraLayers; i++) {
           shapeArtLines.splice(shapeArtLines.length-1, 0, c(-10 - i*2, chars.full).repeat(pyrWidth));
@@ -129,7 +120,7 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
       shapeArtLines = [
         "   "+c(15,chars.half).repeat(7)+"   ",
         " "+c(10,chars.threeQuarters)+c(15,chars.full).repeat(5)+c(10,chars.threeQuarters)+" ",
-        " "+c(5,chars.full)+" ".repeat(9)+c(5,chars.full)+" ", // Hollow center illusion
+        " "+c(5,chars.full)+" ".repeat(9)+c(5,chars.full)+" ",
         " "+c(0,chars.full)+" ".repeat(9)+c(0,chars.full)+" ",
         " "+c(0,chars.full)+" ".repeat(9)+c(0,chars.full)+" ",
         " "+c(0,chars.full)+" ".repeat(9)+c(0,chars.full)+" ",
@@ -139,24 +130,21 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
       ];
       break;
     default:
-      shapeArtLines = [c(0, '?').repeat(ART_WIDTH/2)]; // Simple placeholder
+      shapeArtLines = [c(0, '?').repeat(ART_WIDTH/2)];
   }
 
-  // Add rarity marker
   if (rarity >= 70) {
     const middleLineIndex = Math.floor(shapeArtLines.length / 2);
     if (shapeArtLines[middleLineIndex]) {
-        // Append to the side of the art, trying not to exceed ART_WIDTH too much
-        const strippedLine = stripAnsi(shapeArtLines[middleLineIndex]);
-        if (strippedLine.length <= ART_WIDTH - 3) { // Space for " ★"
+        const strippedLineContent = stripAnsi(shapeArtLines[middleLineIndex]);
+        if (strippedLineContent.length <= ART_WIDTH - 3) {
              shapeArtLines[middleLineIndex] = shapeArtLines[middleLineIndex] + " " + chalk.yellowBright("★");
-        } else { // Otherwise, add it on a new line below the art
+        } else {
              shapeArtLines.push(" ".repeat(Math.floor(ART_WIDTH/2)-1) + chalk.yellowBright("★"));
         }
     }
   }
 
-  // Center the art within ART_WIDTH x ART_HEIGHT
   const finalArt: string[] = [];
   const artActualHeight = shapeArtLines.length;
   const topPadding = Math.floor(Math.max(0, (ART_HEIGHT - artActualHeight)) / 2);
@@ -166,7 +154,7 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
   }
 
   shapeArtLines.forEach(line => {
-    if (finalArt.length < ART_HEIGHT) { // Only add lines if we haven't filled ART_HEIGHT
+    if (finalArt.length < ART_HEIGHT) {
         const strippedLine = stripAnsi(line);
         const lineLength = strippedLine.length;
         const leftPaddingCount = Math.floor(Math.max(0, (ART_WIDTH - lineLength)) / 2);
@@ -176,7 +164,8 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
             ' '.repeat(leftPaddingCount) +
             line +
             ' '.repeat(rightPaddingCount);
-        finalArt.push(paddedLine.substring(0, ART_WIDTH)); // Ensure line does not exceed ART_WIDTH by ansi codes making it longer than visible
+        // Corrected line: No longer using substring, which caused issues with ANSI codes.
+        finalArt.push(paddedLine);
     }
   });
 
@@ -184,5 +173,5 @@ export function renderStoneToAscii(qualities: StoneQualities): string[] {
     finalArt.push(' '.repeat(ART_WIDTH));
   }
 
-  return finalArt.slice(0, ART_HEIGHT); // Ensure exactly ART_HEIGHT lines
+  return finalArt.slice(0, ART_HEIGHT);
 }
