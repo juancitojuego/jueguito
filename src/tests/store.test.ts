@@ -2,7 +2,7 @@
 const mockHomeDir = '/mock/home';
 jest.doMock('os', () => ({
   ...jest.requireActual('os'), // import and retain default behavior
-  homedir: () => mockHomeDir,  // override homedir
+  homedir: () => mockHomeDir, // override homedir
 }));
 
 import { loadData, saveData, getDefaultSaveData, SaveData } from '@src/store';
@@ -11,12 +11,10 @@ import * as fs from 'fs';
 // import * as os from 'os'; // os is already mocked by jest.doMock
 import * as path from 'path';
 
-
 // Mock the 'fs' module
 jest.mock('fs');
 const mockedFs = fs as jest.Mocked<typeof fs>;
 const SAVE_PATH = path.join(mockHomeDir, '.stone-crafter.json');
-
 
 describe('Store Logic', () => {
   const defaultData = getDefaultSaveData();
@@ -37,7 +35,7 @@ describe('Store Logic', () => {
         currentStoneSeed: null,
         gameSeed: null,
         opponents_index: 0,
-        salt: "StoneArenaSaltValueV1",
+        salt: 'StoneArenaSaltValueV1',
       });
     });
   });
@@ -53,7 +51,7 @@ describe('Store Logic', () => {
         currentStoneSeed: stone1.seed,
         gameSeed: 12345,
         opponents_index: 5,
-        salt: "TestSalt",
+        salt: 'TestSalt',
       };
 
       mockedFs.existsSync.mockReturnValue(true);
@@ -74,7 +72,7 @@ describe('Store Logic', () => {
       // though our save/load logic should preserve it due to sorting on load.
       // The loadData function itself sorts by createdAt.
       // For a stable comparison, we should ensure testData.stones is sorted similarly before comparing elements.
-      const sortedTestDataStones = [...testData.stones].sort((a,b) => a.createdAt - b.createdAt);
+      const sortedTestDataStones = [...testData.stones].sort((a, b) => a.createdAt - b.createdAt);
 
       expect(loaded.stones.length).toBe(sortedTestDataStones.length);
       loaded.stones.forEach((loadedStone, index) => {
@@ -143,10 +141,10 @@ describe('Store Logic', () => {
 
       const loaded = loadData();
       expect(loaded.stones.length).toBe(3);
-      expect(loaded.stones.map(s => s.seed)).toEqual([stoneOld.seed, stoneMiddle.seed, stoneNew.seed]);
+      expect(loaded.stones.map((s) => s.seed)).toEqual([stoneOld.seed, stoneMiddle.seed, stoneNew.seed]);
     });
 
-     test('loadData handles empty stones array and sets currentStoneSeed to null', () => {
+    test('loadData handles empty stones array and sets currentStoneSeed to null', () => {
       mockedFs.existsSync.mockReturnValue(true);
       mockedFs.readFileSync.mockReturnValue(JSON.stringify({ ...defaultData, stones: [], currentStoneSeed: 123 }));
       const loaded = loadData();
@@ -158,10 +156,11 @@ describe('Store Logic', () => {
       const stone1 = createStone(1);
       const stone2 = createStone(2);
       mockedFs.existsSync.mockReturnValue(true);
-      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ ...defaultData, stones: [stone1, stone2], currentStoneSeed: 999 /* invalid */ }));
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({ ...defaultData, stones: [stone1, stone2], currentStoneSeed: 999 /* invalid */ })
+      );
       const loaded = loadData();
       expect(loaded.currentStoneSeed).toBe(stone1.seed);
     });
-
   });
 });

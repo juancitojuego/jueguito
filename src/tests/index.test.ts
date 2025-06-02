@@ -18,7 +18,12 @@ jest.mock('blessed', () => ({
     focused: true, // Assume screen is always focused for rendering calls
     render: jest.fn(),
   })),
-  layout: jest.fn((options) => ({ ...options, hide: jest.fn(), show: jest.fn(), screen: options.parent ? options.parent : true})),
+  layout: jest.fn((options) => ({
+    ...options,
+    hide: jest.fn(),
+    show: jest.fn(),
+    screen: options.parent ? options.parent : true,
+  })),
   box: jest.fn((options) => ({ ...options, setContent: jest.fn(), screen: options.parent ? options.parent : true })),
   list: jest.fn((options) => ({
     ...options,
@@ -28,14 +33,25 @@ jest.mock('blessed', () => ({
     getItem: jest.fn(() => ({ getContent: jest.fn() })),
     setItems: jest.fn(),
     select: jest.fn(),
-    screen: options.parent ? options.parent : true
+    screen: options.parent ? options.parent : true,
   })),
-  text: jest.fn((options) => ({ ...options, setContent: jest.fn(), setFront: jest.fn(), screen: options.parent ? options.parent : true })),
-  form: jest.fn((options) => ({ ...options, key: jest.fn(), on: jest.fn(), submit: jest.fn(), destroy: jest.fn(), screen: options.parent ? options.parent : true })),
+  text: jest.fn((options) => ({
+    ...options,
+    setContent: jest.fn(),
+    setFront: jest.fn(),
+    screen: options.parent ? options.parent : true,
+  })),
+  form: jest.fn((options) => ({
+    ...options,
+    key: jest.fn(),
+    on: jest.fn(),
+    submit: jest.fn(),
+    destroy: jest.fn(),
+    screen: options.parent ? options.parent : true,
+  })),
   textbox: jest.fn((options) => ({ ...options, focus: jest.fn() })),
   button: jest.fn((options) => ({ ...options, on: jest.fn() })),
 }));
-
 
 // --- Test Setup ---
 // The functions we want to test are originally defined in the global scope of index.ts.
@@ -79,7 +95,6 @@ function getCurrentOpponentTestVersion(): StoneQualities | null {
   return null;
 }
 
-
 describe('Index.ts Logic', () => {
   beforeEach(() => {
     // Reset state before each test
@@ -102,7 +117,8 @@ describe('Index.ts Logic', () => {
     test('inventory remains sorted by createdAt after adding multiple stones', () => {
       const stoneOld = createStone(100); // createdAt is Date.now()
       // Ensure createdAt is distinct for testing sort order
-      jest.spyOn(Date, 'now')
+      jest
+        .spyOn(Date, 'now')
         .mockReturnValueOnce(stoneOld.createdAt + 10)
         .mockReturnValueOnce(stoneOld.createdAt - 10);
 
@@ -132,7 +148,7 @@ describe('Index.ts Logic', () => {
 
       test('all generated stones are valid StoneQualities objects', () => {
         const queue = generateOpponentQueue(gamePrng, 3);
-        queue.forEach(stone => {
+        queue.forEach((stone) => {
           expect(stone).toHaveProperty('seed');
           expect(stone).toHaveProperty('color');
           expect(stone).toHaveProperty('shape');
@@ -184,7 +200,7 @@ describe('Index.ts Logic', () => {
         expect(newOpponent?.seed).not.toEqual(initialQueueFirstStoneSeed);
       });
 
-       test('returns null if index is out of bounds and queue was never generated (empty)', () => {
+      test('returns null if index is out of bounds and queue was never generated (empty)', () => {
         opponentQueue = []; // Ensure queue is empty initially
         currentSaveData.opponents_index = 0;
 
