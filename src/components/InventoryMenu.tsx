@@ -28,12 +28,12 @@ const InventoryMenu: Component<InventoryMenuProps> = (props) => {
     setCurrentSaveData('equippedStone', stoneToEquip); // Directly set the stone object
     setCurrentStoneDetails(stoneToEquip); // Update the global signal for current stone details
     saveData();
-
+    
     logMessage(`Equipped stone set to: ${stoneToEquip.seed}`);
     showMessage(`Stone "${stoneToEquip.name || stoneToEquip.seed}" is now equipped.`, 3000, 'success');
     props.toggleInventory(); // Close inventory
   };
-
+  
   const getStoneDisplayName = (stone: StoneQualities) => {
     return `${stone.name || stone.seed.toString().substring(0, 8)}.. - ${stone.color} ${stone.shape} (R${stone.rarity})`;
   };
@@ -41,8 +41,8 @@ const InventoryMenu: Component<InventoryMenuProps> = (props) => {
   // Style objects
   const inventoryContainerStyle = { display: 'flex', "flex-direction": 'row', gap: '20px', padding: '20px', border: '1px solid #007bff', "border-radius": '8px', background_color: '#f8f9fa' };
   const stoneListStyle = { flex: '1', "max-height": '500px', "overflow-y": 'auto', border: '1px solid #ccc', padding: '10px' };
-  const listItemStyle = (isSelected: boolean) => ({
-    padding: '8px', margin: '4px 0', cursor: 'pointer', "border-radius": '4px',
+  const listItemStyle = (isSelected: boolean) => ({ 
+    padding: '8px', margin: '4px 0', cursor: 'pointer', "border-radius": '4px', 
     background_color: isSelected ? '#007bff' : '#fff',
     color: isSelected ? 'white' : 'black',
     border: isSelected ? '1px solid #0056b3' : '1px solid #ddd'
@@ -75,7 +75,7 @@ const InventoryMenu: Component<InventoryMenuProps> = (props) => {
             <>
               {/* Use the StonePreview component for the highlighted stone */}
               <StonePreview stone={stone} showTitle={false} />
-
+              
               {/* Optionally, still list details if StonePreview is minimal, or remove this section */}
               <h4 style={{"margin-top": "15px"}}>Properties:</h4>
               <ul style={{ "list-style-type": 'none', padding: '0', "font-size": "0.9em" }}>
@@ -89,8 +89,8 @@ const InventoryMenu: Component<InventoryMenuProps> = (props) => {
                 <li><strong>Magic:</strong> {stone.magic.toFixed(2)}</li>
                 <li><strong>Created:</strong> {new Date(stone.createdAt).toLocaleString()}</li>
               </ul>
-              <button
-                onClick={handleSetAsCurrent}
+              <button 
+                onClick={handleSetAsCurrent} 
                 disabled={!highlightedStone()}
                 style={{ ...buttonStyle, "background-color": '#28a745', color: 'white', "margin-right": '10px' }}
               >

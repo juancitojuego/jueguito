@@ -74,7 +74,7 @@ export function renderStoneToSVG(stone: StoneQualities): JSX.Element {
       [possibleGlyphPositions[i], possibleGlyphPositions[j]] = [possibleGlyphPositions[j], possibleGlyphPositions[i]];
     }
   }
-
+  
   const { type: magicGlyphType, count: glyphCount } = getMagicGlyphDetails(magic);
   const glyphPositions = new Set<string>();
   for (let i = 0; i < Math.min(glyphCount, possibleGlyphPositions.length); i++) {
@@ -115,7 +115,7 @@ export function renderStoneToSVG(stone: StoneQualities): JSX.Element {
       }
     }
   }
-
+  
   // Add a subtle border to the whole stone based on rarity
   let strokeColor = "none";
   let strokeWidth = 0;
@@ -175,6 +175,6 @@ export function renderStone(mask: boolean[][], qualities: StoneQualities): strin
 }
 */
 // ... (other old functions like selectDensityCharacter, getBaseHslForColor, etc.)
-
+    
 // Ensure MASK_WIDTH and MASK_HEIGHT are used consistently or passed as parameters if variable sizes are needed.
 // For SVG, fixed viewBox is fine, and outer width/height="100%" makes it scale.

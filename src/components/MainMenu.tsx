@@ -55,7 +55,7 @@ const MainMenu: Component<MainMenuProps> = (props) => {
       newStones.push(stone3);
       addStoneToInventory(stone3);
     }
-
+    
     // Determine new equipped stone
     let newEquippedStone: StoneQualities | null = null;
     if (newStones.length > 0) {
@@ -65,7 +65,7 @@ const MainMenu: Component<MainMenuProps> = (props) => {
       // and newStones always has at least one. But as a fallback:
       newEquippedStone = currentSaveData.stones[0];
     }
-
+    
     setCurrentSaveData('equippedStone', newEquippedStone);
     setCurrentStoneDetails(newEquippedStone);
 
@@ -150,7 +150,7 @@ const MainMenu: Component<MainMenuProps> = (props) => {
       }
     }));
     setCurrentStoneDetails(currentSaveData.equippedStone);
-
+    
     saveData();
     logMessage(`Salvaged stone ${stoneToSalvage.seed} for ${salvageValue}. New equipped: ${currentSaveData.equippedStone?.seed || 'none'}`);
     showMessage(`Salvaged stone for ${salvageValue} currency. Current: $${currentSaveData.currency}.`, 4000, 'success');

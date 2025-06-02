@@ -2,7 +2,7 @@
 import { render } from 'solid-js/web';
 import App from './App';
 // If you create a global stylesheet, e.g., index.css or App.css, import it here.
-// import './index.css';
+// import './index.css'; 
 
 // The store is initialized (including calling loadData()) when it's first imported.
 // App.tsx or other components will import from store.ts, triggering initialization.

@@ -87,7 +87,7 @@ const StartMenu: Component = () => {
           style={{ margin: '5px', padding: '8px', width: '200px' }}
         />
       </div>
-      <button
+      <button 
         onClick={handleStartGame}
         style={{ margin: '10px 5px', padding: '10px 20px', background_color: 'lightgreen', border_radius: '5px' }}
       >
