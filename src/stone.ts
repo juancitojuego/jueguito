@@ -86,6 +86,24 @@ export function deriveStoneQualities(seed: number): StoneQualities {
   };
 }
 
+// --- Stone Power Calculation ---
+/**
+ * Calculates the power of a stone based on its qualities.
+ * @param stone The StoneQualities object.
+ * @returns A numerical power value for the stone.
+ */
+export function calculateStonePower(stone: StoneQualities): number {
+  // Formula: (rarity * 0.4) + (hardness * 30) + (magic * 0.3) + (weight * 0.1)
+  // Example weights:
+  // Rarity: 0-100 -> 0-40 power
+  // Hardness: 0-1.00 -> 0-30 power
+  // Magic: 0-100 -> 0-30 power
+  // Weight: 1-100 -> 0.1-10 power
+  // Total potential: ~110, but highly variable.
+  const power = stone.rarity * 0.4 + stone.hardness * 30 + stone.magic * 0.3 + stone.weight * 0.1;
+  return power;
+}
+
 // --- Stone Creation ---
 /**
  * Creates a new stone with qualities derived from a seed and a creation timestamp.

@@ -5,7 +5,14 @@ import blessed from 'blessed';
 import chalk from 'chalk'; // chalk@4.1.2
 import seedrandom from 'seedrandom';
 import { loadData, saveData, SaveData, getDefaultSaveData } from './store';
-import { StoneQualities, deriveStoneQualities, generateNewStoneSeed, mulberry32, createStone } from './stone';
+import {
+  StoneQualities,
+  deriveStoneQualities,
+  generateNewStoneSeed,
+  mulberry32,
+  createStone,
+  calculateStonePower,
+} from './stone';
 import { generateShapeMask } from './shapeMasks';
 import { renderStone } from './render';
 
@@ -86,9 +93,11 @@ Rarity: ${currentStoneDetails.rarity}
 Hardness: ${currentStoneDetails.hardness.toFixed(2)}
 Weight: ${currentStoneDetails.weight}
 Magic: ${currentStoneDetails.magic}
-Created: ${new Date(currentStoneDetails.createdAt).toLocaleTimeString()}`); // Example formatting
+Created: ${new Date(currentStoneDetails.createdAt).toLocaleTimeString()}
+Currency: ${currentSaveData.currency}`);
     } else {
-      currentStoneInfoBox.setContent('No current stone selected.');
+      currentStoneInfoBox.setContent(`No current stone selected.
+Currency: ${currentSaveData.currency}`);
     }
   }
   if (stonePreviewBox && stonePreviewBox.screen) {
@@ -187,7 +196,7 @@ function showMainMenu() {
       left: 0,
       width: '30%',
       height: '50%',
-      items: ['Open', 'Salvage', 'Inventory', 'Quit'],
+      items: ['Open', 'Fight', 'Salvage', 'Inventory', 'Quit'],
       keys: true,
       vi: true,
       mouse: true,
@@ -274,6 +283,70 @@ function showMainMenu() {
         showMessage(
           `Opened stone ${openedStoneSeed}. Obtained ${newStones.length} new stone(s). First new one is now current.`
         );
+        if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
+      } else if (actionText === 'Fight') {
+        if (!currentStoneDetails) {
+          showMessage('No stone selected to fight with!');
+          if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
+          return;
+        }
+
+        const opponentStone = getCurrentOpponent();
+        if (!opponentStone) {
+          showMessage('No opponents available to fight!');
+          if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
+          return;
+        }
+
+        let playerPower = calculateStonePower(currentStoneDetails);
+        let opponentPower = calculateStonePower(opponentStone);
+
+        // Apply variance: +/- 15%
+        playerPower *= 1 + (gamePrng() * 0.3 - 0.15);
+        opponentPower *= 1 + (gamePrng() * 0.3 - 0.15);
+
+        let fightMessage = `Your stone (P: ${playerPower.toFixed(
+          2
+        )}) vs Opponent (P: ${opponentPower.toFixed(2)}). `;
+
+        if (playerPower > opponentPower) {
+          // Player wins
+          currentSaveData.currency += 10;
+          fightMessage += `You WIN! +10 currency. Current: ${currentSaveData.currency}.`;
+
+          if (gamePrng() < 0.2) {
+            // 20% chance for an extra stone
+            const newStoneSeed = generateNewStoneSeed(gamePrng);
+            const extraStone = createStone(newStoneSeed);
+            addStoneToInventory(extraStone);
+            fightMessage += ' You found an extra stone!';
+          }
+        } else if (playerPower < opponentPower) {
+          // Player loses
+          fightMessage += 'You LOST. ';
+          if (gamePrng() < 0.3) {
+            // 30% chance to destroy player's stone
+            const lostStoneSeed = currentStoneDetails.seed;
+            currentSaveData.stones = currentSaveData.stones.filter((s) => s.seed !== lostStoneSeed);
+            fightMessage += 'Your stone was destroyed!';
+
+            if (currentSaveData.stones.length > 0) {
+              currentSaveData.currentStoneSeed = currentSaveData.stones[0].seed;
+            } else {
+              currentSaveData.currentStoneSeed = null;
+            }
+            updateCurrentStoneDetails(); // Update global currentStoneDetails
+          }
+        } else {
+          // Tie
+          fightMessage += "It's a TIE.";
+        }
+
+        currentSaveData.opponents_index++; // Advance to next opponent
+
+        showMessage(fightMessage);
+        saveData(currentSaveData);
+        refreshCurrentStoneDisplay();
         if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
       } else if (actionText === 'Salvage') {
         if (!currentSaveData.currentStoneSeed || !currentStoneDetails) {

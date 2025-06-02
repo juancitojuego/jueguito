@@ -6,6 +6,7 @@ import {
   StoneQualities,
   COLORS,
   SHAPES,
+  calculateStonePower,
 } from '@src/stone';
 
 describe('Stone Logic', () => {
@@ -126,6 +127,68 @@ describe('Stone Logic', () => {
         expect(firstStoneOtherQualities).toEqual(secondStoneOtherQualities);
         done();
       }, 10); // 10ms delay
+    });
+  });
+
+  describe('calculateStonePower', () => {
+    test('should calculate power correctly for a typical stone', () => {
+      const stone: StoneQualities = {
+        seed: 1,
+        color: 'Red',
+        shape: 'Cube',
+        rarity: 50, // 50 * 0.4 = 20
+        hardness: 0.5, // 0.5 * 30 = 15
+        magic: 30, // 30 * 0.3 = 9
+        weight: 60, // 60 * 0.1 = 6
+        createdAt: Date.now(),
+      };
+      // Expected: 20 + 15 + 9 + 6 = 50
+      expect(calculateStonePower(stone)).toBeCloseTo(50);
+    });
+
+    test('should calculate power correctly for a stone with minimum values', () => {
+      const stone: StoneQualities = {
+        seed: 2,
+        color: 'Black',
+        shape: 'Shard',
+        rarity: 0, // 0 * 0.4 = 0
+        hardness: 0.0, // 0.0 * 30 = 0
+        magic: 0, // 0 * 0.3 = 0
+        weight: 1, // 1 * 0.1 = 0.1
+        createdAt: Date.now(),
+      };
+      // Expected: 0 + 0 + 0 + 0.1 = 0.1
+      expect(calculateStonePower(stone)).toBeCloseTo(0.1);
+    });
+
+    test('should calculate power correctly for a stone with maximum values', () => {
+      const stone: StoneQualities = {
+        seed: 3,
+        color: 'White',
+        shape: 'Crystal',
+        rarity: 100, // 100 * 0.4 = 40
+        hardness: 1.0, // 1.0 * 30 = 30
+        magic: 100, // 100 * 0.3 = 30
+        weight: 100, // 100 * 0.1 = 10
+        createdAt: Date.now(),
+      };
+      // Expected: 40 + 30 + 30 + 10 = 110
+      expect(calculateStonePower(stone)).toBeCloseTo(110);
+    });
+
+    test('should handle floating point precision for hardness', () => {
+      const stone: StoneQualities = {
+        seed: 4,
+        color: 'Blue',
+        shape: 'Sphere',
+        rarity: 0,
+        hardness: 0.33, // 0.33 * 30 = 9.9
+        magic: 0,
+        weight: 10, // 10 * 0.1 = 1
+        createdAt: Date.now(),
+      };
+      // Expected: 9.9 + 1 = 10.9
+      expect(calculateStonePower(stone)).toBeCloseTo(10.9);
     });
   });
 });

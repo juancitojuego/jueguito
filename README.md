@@ -16,6 +16,29 @@ This is a command-line interface (CLI) game based on procedurally generated ston
         *   ANSI colors based on the stone's color property.
         *   Density characters (█, ▓, ▒, ░) selected based on the stone's weight and hardness.
         *   Magic glyphs (✦, ∗, +) overlaid on the stone's surface, determined by its magic score.
+*   **Gameplay Actions & Economy**:
+    *   **Open Action**:
+        *   The "Open" action is used to generate new stones. It consumes the currently selected stone, effectively "opening" it to reveal new ones.
+        *   It always creates 1 new stone.
+        *   There is a 10% chance for a second extra stone to be generated.
+        *   There is an independent 1% chance for a third extra stone to be generated.
+        *   All newly generated stones are added to the player's inventory.
+    *   **Fight Action**:
+        *   Players use their currently selected stone to battle an opponent's stone from a predefined queue.
+        *   Each stone's power is calculated based on its attributes (rarity, hardness, magic, weight). A variance of ±15% is applied to both the player's and opponent's power for each fight to introduce unpredictability.
+        *   **Outcomes**:
+            *   **Win**: If the player's stone power is greater, the player wins 10 Gold. There is also a 20% chance of finding an additional new stone, which is added to their inventory.
+            *   **Loss**: If the player's stone power is less, there are no Gold changes. However, there is a 30% chance that the player's stone used in the fight is destroyed and removed from their inventory.
+            *   **Tie**: If powers are equal, there are no changes to Gold or stones.
+        *   After each fight, the game advances to the next opponent in the queue.
+    *   **Gold Economy**:
+        *   Gold is the primary in-game currency.
+        *   It is primarily earned by winning fights against opponents.
+        *   The player's current Gold balance is displayed in the user interface.
+    *   **Salvage Action**:
+        *   Players can choose to "Salvage" their currently selected stone.
+        *   This action destroys the stone.
+        *   In return, the player gains Gold equivalent to the stone's rarity multiplied by 10.
 
 ## Prerequisites
 
