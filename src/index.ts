@@ -750,7 +750,7 @@ async function main() {
     },
     scrollable: true,
     alwaysScroll: true,
-    scrollbar: { ch: ' ', inverse: true },
+    scrollbar: { ch: ' ', track: { bg: 'grey' }, style: { inverse: true } },
     label: 'Console Log',
     tags: true,
   });
