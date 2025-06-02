@@ -3,15 +3,17 @@
 
 import blessed from 'blessed';
 import chalk from 'chalk'; // chalk@4.1.2
+import seedrandom from 'seedrandom';
 import { loadData, saveData, SaveData, getDefaultSaveData } from './store';
-import { StoneQualities, deriveStoneQualities, generateNewStoneSeed, mulberry32 } from './stone';
+import { StoneQualities, deriveStoneQualities, generateNewStoneSeed, mulberry32, createStone } from './stone';
 import { renderStoneToAscii } from './render';
 
 // --- Global State ---
 let screen: blessed.Widgets.Screen;
 let currentSaveData: SaveData;
 let currentStoneDetails: StoneQualities | null = null;
-let gamePrng: () => number; // General PRNG for game events like probabilities
+let gamePrng: seedrandom.PRNG; // General PRNG for game events like probabilities
+let opponentQueue: StoneQualities[] = [];
 
 // --- UI Elements ---
 let mainLayout: blessed.Widgets.LayoutElement;
@@ -26,11 +28,46 @@ let inventoryPreviewBox: blessed.Widgets.BoxElement | null = null;
 let inventorySelectedIndex = 0;
 
 
+// --- Helper Functions ---
+function addStoneToInventory(stone: StoneQualities): void {
+  currentSaveData.stones.push(stone);
+  currentSaveData.stones.sort((a, b) => a.createdAt - b.createdAt); // Sort by createdAt, oldest first
+  // saveData(currentSaveData); // Decided to save explicitly after all operations in a single action (e.g. Open)
+}
+
+// --- Opponent Queue Functions ---
+function generateOpponentQueue(prng: seedrandom.PRNG, count: number): StoneQualities[] {
+  const newQueue: StoneQualities[] = [];
+  for (let i = 0; i < count; i++) {
+    const stoneSeed = generateNewStoneSeed(prng);
+    const opponentStone = createStone(stoneSeed);
+    newQueue.push(opponentStone);
+  }
+  return newQueue;
+}
+
+function getCurrentOpponent(): StoneQualities | null {
+  if (currentSaveData.opponents_index >= opponentQueue.length && opponentQueue.length > 0) {
+    // Regenerate queue if index is out of bounds and queue was previously generated
+    opponentQueue = generateOpponentQueue(gamePrng, 100);
+    currentSaveData.opponents_index = 0;
+    saveData(currentSaveData); // Persist the reset index and potentially new salt from new save data if gameSeed changes
+  }
+
+  if (opponentQueue.length > 0 && currentSaveData.opponents_index < opponentQueue.length) {
+    return opponentQueue[currentSaveData.opponents_index];
+  }
+
+  // If queue is empty even after potential regeneration (e.g. count = 0 in generateOpponentQueue)
+  // or if initial generation hasn't happened.
+  return null;
+}
+
 // --- Core Functions ---
 
 function updateCurrentStoneDetails() {
   if (currentSaveData.currentStoneSeed !== null) {
-    currentStoneDetails = deriveStoneQualities(currentSaveData.currentStoneSeed);
+    currentStoneDetails = currentSaveData.stones.find(s => s.seed === currentSaveData.currentStoneSeed) || null;
   } else {
     currentStoneDetails = null;
   }
@@ -39,20 +76,23 @@ function updateCurrentStoneDetails() {
 function refreshCurrentStoneDisplay() {
   if (currentStoneInfoBox && currentStoneInfoBox.screen) { // Check if part of a screen
     if (currentStoneDetails) {
+      // Added Magic and CreatedAt (optional, as it's a timestamp)
       currentStoneInfoBox.setContent(`Current Stone:
 Seed: ${currentStoneDetails.seed}
 Color: ${currentStoneDetails.color}
 Shape: ${currentStoneDetails.shape}
 Rarity: ${currentStoneDetails.rarity}
 Hardness: ${currentStoneDetails.hardness.toFixed(2)}
-Weight: ${currentStoneDetails.weight}`);
+Weight: ${currentStoneDetails.weight}
+Magic: ${currentStoneDetails.magic}
+Created: ${new Date(currentStoneDetails.createdAt).toLocaleTimeString()}`); // Example formatting
     } else {
       currentStoneInfoBox.setContent("No current stone selected.");
     }
   }
   if (stonePreviewBox && stonePreviewBox.screen) { // Check if part of a screen
     if (currentStoneDetails) {
-      const artLines = renderStoneToAscii(currentStoneDetails);
+      const artLines = renderStoneToAscii(currentStoneDetails); // renderStoneToAscii should handle StoneQualities
       stonePreviewBox.setContent(artLines.join('\n'));
     } else {
       stonePreviewBox.setContent("{center}Select or generate a stone.{/center}");
@@ -153,33 +193,46 @@ function showMainMenu() {
           return;
         }
         const openedStoneSeed = currentSaveData.currentStoneSeed;
-
-        currentSaveData.stones = currentSaveData.stones.filter(s => s !== openedStoneSeed);
-
-        const newSeeds: number[] = [];
-        const stoneSpecificPrng = mulberry32(openedStoneSeed ^ Date.now());
-
-        const seed1 = generateNewStoneSeed(stoneSpecificPrng);
-        newSeeds.push(seed1);
-        currentSaveData.stones.push(seed1);
-
-        if (gamePrng() < 0.10) {
-          const seed2 = generateNewStoneSeed(stoneSpecificPrng);
-          newSeeds.push(seed2);
-          currentSaveData.stones.push(seed2);
-        }
-        if (gamePrng() < 0.01) {
-          const seed3 = generateNewStoneSeed(stoneSpecificPrng);
-          newSeeds.push(seed3);
-          currentSaveData.stones.push(seed3);
+        if (!openedStoneSeed) { // Should not happen due to earlier check, but good practice
+            showMessage("Error: No stone seed to open!");
+            if(menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
+            return;
         }
 
-        currentSaveData.currentStoneSeed = newSeeds.length > 0 ? newSeeds[0] : (currentSaveData.stones.length > 0 ? currentSaveData.stones[0] : null);
+        currentSaveData.stones = currentSaveData.stones.filter(s => s.seed !== openedStoneSeed);
 
-        saveData(currentSaveData);
+        const newStones: StoneQualities[] = [];
+        // Use a PRNG specific to the opened stone's seed for deterministic output if desired,
+        // or gamePrng for more global randomness. For variety, let's use gamePrng here.
+        // const stoneSpecificPrng = mulberry32(openedStoneSeed ^ Date.now()); // Old way
+
+        const stone1Seed = generateNewStoneSeed(gamePrng);
+        const stone1 = createStone(stone1Seed);
+        newStones.push(stone1);
+        addStoneToInventory(stone1);
+
+        if (gamePrng() < 0.10) { // 10% chance for a second stone
+          const stone2Seed = generateNewStoneSeed(gamePrng);
+          const stone2 = createStone(stone2Seed);
+          newStones.push(stone2);
+          addStoneToInventory(stone2);
+        }
+        if (gamePrng() < 0.01) { // 1% chance for a third stone (compounded)
+          const stone3Seed = generateNewStoneSeed(gamePrng);
+          const stone3 = createStone(stone3Seed);
+          newStones.push(stone3);
+          addStoneToInventory(stone3);
+        }
+
+        saveData(currentSaveData); // Save once after all stones are added and sorted by addStoneToInventory
+
+        currentSaveData.currentStoneSeed = newStones.length > 0
+            ? newStones[0].seed
+            : (currentSaveData.stones.length > 0 ? currentSaveData.stones[0].seed : null);
+
         updateCurrentStoneDetails();
         refreshCurrentStoneDisplay();
-        showMessage(`Opened stone ${openedStoneSeed}. Obtained ${newSeeds.length} new stone(s). First new one is now current.`);
+        showMessage(`Opened stone ${openedStoneSeed}. Obtained ${newStones.length} new stone(s). First new one is now current.`);
         if(menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
 
       } else if (actionText === 'Salvage') {
@@ -188,19 +241,27 @@ function showMainMenu() {
           if(menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
-        const salvagedStoneSeed = currentSaveData.currentStoneSeed;
-        const salvageValue = currentStoneDetails.rarity * 10;
+        const salvagedStoneSeed = currentSaveData.currentStoneSeed; // This is a number (seed)
+        const stoneToSalvage = currentStoneDetails; // This is StoneQualities | null
+
+        if (!salvagedStoneSeed || !stoneToSalvage) {
+          showMessage("Error: No stone details for salvage!");
+          if(menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
+          return;
+        }
+
+        const salvageValue = stoneToSalvage.rarity * 10; // Use details from currentStoneDetails
         currentSaveData.currency += salvageValue;
 
-        currentSaveData.stones = currentSaveData.stones.filter(s => s !== salvagedStoneSeed);
+        currentSaveData.stones = currentSaveData.stones.filter(s => s.seed !== salvagedStoneSeed);
 
         if (currentSaveData.stones.length > 0) {
-          currentSaveData.currentStoneSeed = currentSaveData.stones[0];
+          currentSaveData.currentStoneSeed = currentSaveData.stones[0].seed;
         } else {
           currentSaveData.currentStoneSeed = null;
         }
 
-        saveData(currentSaveData);
+        saveData(currentSaveData); // Explicitly save after salvage
         updateCurrentStoneDetails();
         refreshCurrentStoneDisplay();
         showMessage(`Salvaged stone ${salvagedStoneSeed} for ${salvageValue} currency. Current currency: ${currentSaveData.currency}`);
@@ -224,9 +285,9 @@ function refreshInventoryPreview() {
     const currentInventorySelectionIndex = (inventoryList as any).selected as number; // Cast to any then number
 
     if (currentSaveData.stones.length > 0 && currentInventorySelectionIndex < currentSaveData.stones.length) {
-      const selectedSeed = currentSaveData.stones[currentInventorySelectionIndex];
-      const qualities = deriveStoneQualities(selectedSeed);
-      const artLines = renderStoneToAscii(qualities);
+      const selectedStone = currentSaveData.stones[currentInventorySelectionIndex]; // Now a StoneQualities object
+      // const qualities = deriveStoneQualities(selectedSeed); // No longer needed, selectedStone is full object
+      const artLines = renderStoneToAscii(selectedStone);
       inventoryPreviewBox.setContent(artLines.join('\n'));
     } else {
       inventoryPreviewBox.setContent("{center}Inventory is empty or no stone selected.{/center}");
@@ -265,12 +326,12 @@ function showInventoryMenu() {
 
     inventoryList.on('select', (itemEl, index) => {
         if (currentSaveData.stones.length > 0 && index < currentSaveData.stones.length) {
-            currentSaveData.currentStoneSeed = currentSaveData.stones[index];
-            saveData(currentSaveData);
-            updateCurrentStoneDetails();
+            currentSaveData.currentStoneSeed = currentSaveData.stones[index].seed; // Set the seed
+            saveData(currentSaveData); // Explicitly save after changing current stone
+            updateCurrentStoneDetails(); // This will find the full stone object
         }
         if (inventoryLayout && inventoryLayout.screen) inventoryLayout.hide();
-        showMainMenu();
+        showMainMenu(); // This will refresh display using the new currentStoneDetails
     });
 
 
@@ -280,9 +341,9 @@ function showInventoryMenu() {
     });
   }
 
-  const displayItems = currentSaveData.stones.map(seed => {
-      const stone = deriveStoneQualities(seed);
-      return `${seed.toString().substring(0,8)}.. - ${stone.color} ${stone.shape} (R${stone.rarity})`;
+  const displayItems = currentSaveData.stones.map(stone => { // Iterate over StoneQualities objects
+      // const stone = deriveStoneQualities(seed); // No longer needed
+      return `${stone.seed.toString().substring(0,8)}.. - ${stone.color} ${stone.shape} (R${stone.rarity})`;
   });
   if (inventoryList && inventoryList.screen) {
       inventoryList.setItems(displayItems);
@@ -374,33 +435,45 @@ async function main() {
 
   screen.key(['C-c'], () => shutdown(0));
 
-  currentSaveData = loadData();
-  gamePrng = mulberry32(Date.now());
+  currentSaveData = loadData(); // loadData now returns SaveData with gameSeed, salt, opponents_index
 
-  if (currentSaveData.stones.length === 0 && currentSaveData.currentStoneSeed === null) {
+  if (currentSaveData.gameSeed === null) { // Check against null explicitly, as 0 is a valid seed
     try {
-        const initialSeed = await showStartMenu();
-        currentSaveData.currentStoneSeed = initialSeed;
-        if (!currentSaveData.stones.includes(initialSeed)) {
-            currentSaveData.stones.push(initialSeed);
-        }
-        saveData(currentSaveData);
-        showMessage(`Game started with new seed: ${initialSeed}. Your first stone is active.`, 5000);
+      const initialGameSeed = await showStartMenu();
+      currentSaveData.gameSeed = initialGameSeed;
+      gamePrng = seedrandom(initialGameSeed.toString());
+
+      const newStoneInternalSeed = generateNewStoneSeed(gamePrng);
+      const firstStone = createStone(newStoneInternalSeed);
+
+      addStoneToInventory(firstStone); // Use the new helper
+      currentSaveData.currentStoneSeed = firstStone.seed;
+      saveData(currentSaveData); // Save after initial stone is added
+
+      showMessage(`Game started with new game seed: ${currentSaveData.gameSeed}. Your first stone is active.`, 5000);
     } catch (err: any) {
-        showMessage(err.message || "Exited during setup.", 2000);
-        await new Promise(r => setTimeout(r, 2000));
-        shutdown(1);
-        return;
+      showMessage(err.message || "Exited during setup.", 2000);
+      await new Promise(r => setTimeout(r, 2000));
+      shutdown(1);
+      return;
     }
+  } else {
+    gamePrng = seedrandom(currentSaveData.gameSeed.toString());
   }
 
-  if(currentSaveData.currentStoneSeed === null && currentSaveData.stones.length > 0) {
-    currentSaveData.currentStoneSeed = currentSaveData.stones[0];
-  } else if (currentSaveData.currentStoneSeed !== null && !currentSaveData.stones.includes(currentSaveData.currentStoneSeed)) {
-    currentSaveData.currentStoneSeed = currentSaveData.stones.length > 0 ? currentSaveData.stones[0] : null;
-  }
+  opponentQueue = generateOpponentQueue(gamePrng, 100); // Populate opponent queue
 
-  showMainMenu();
+  // Ensure currentStoneSeed is valid or set a default
+  if (currentSaveData.currentStoneSeed === null && currentSaveData.stones.length > 0) {
+    currentSaveData.currentStoneSeed = currentSaveData.stones[0].seed; // Get seed from first stone object
+  } else if (currentSaveData.currentStoneSeed !== null && !currentSaveData.stones.some(s => s.seed === currentSaveData.currentStoneSeed)) {
+    // If currentStoneSeed is somehow invalid (not in stones array of objects), default to first or null
+    currentSaveData.currentStoneSeed = currentSaveData.stones.length > 0 ? currentSaveData.stones[0].seed : null;
+  }
+  // If stones array is empty, currentStoneSeed will remain/become null.
+
+  updateCurrentStoneDetails(); // Call this once after PRNG and save data are settled
+  showMainMenu(); // This will call refreshCurrentStoneDisplay
 }
 
 // --- Program Entry ---

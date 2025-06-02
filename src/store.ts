@@ -3,18 +3,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { StoneQualities } from './stone'; // Import StoneQualities
 
 // --- Interfaces ---
 export interface SaveData {
-  stones: number[]; // Array of 32-bit integer stone seeds
+  stones: StoneQualities[]; // Array of StoneQualities objects
   currency: number;
   currentStoneSeed: number | null; // Seed of the currently active stone, or null
+  gameSeed: number | null;
+  opponents_index: number;
+  salt: string;
 }
 
 // --- Constants ---
 const SAVE_FILE_NAME = '.stone-crafter.json';
-// For testing, one might use a local path, but for actual use, os.homedir() is correct.
-// const SAVE_PATH = path.join(process.cwd(), SAVE_FILE_NAME); // For easier local testing if needed
 const SAVE_PATH = path.join(os.homedir(), SAVE_FILE_NAME);
 
 // --- Default State ---
@@ -23,6 +25,9 @@ export function getDefaultSaveData(): SaveData {
     stones: [],
     currency: 0,
     currentStoneSeed: null,
+    gameSeed: null,
+    opponents_index: 0,
+    salt: "StoneArenaSaltValueV1",
   };
 }
 
@@ -34,47 +39,75 @@ export function getDefaultSaveData(): SaveData {
  * @returns The loaded (or default) SaveData.
  */
 export function loadData(): SaveData {
+  const defaults = getDefaultSaveData();
   try {
     if (fs.existsSync(SAVE_PATH)) {
       const fileContent = fs.readFileSync(SAVE_PATH, 'utf-8');
-      const parsedData = JSON.parse(fileContent) as Partial<SaveData>; // Use Partial for validation
+      const parsedData = JSON.parse(fileContent) as Partial<SaveData>;
 
-      // Validate parsed data structure
-      const stones = Array.isArray(parsedData.stones) ? parsedData.stones.filter(s => typeof s === 'number' && !isNaN(s)) : [];
-      const currency = typeof parsedData.currency === 'number' && !isNaN(parsedData.currency) ? parsedData.currency : 0;
+      const loadedStones: StoneQualities[] = [];
+      if (Array.isArray(parsedData.stones)) {
+        for (const s of parsedData.stones) {
+          if (
+            s && typeof s === 'object' &&
+            typeof s.seed === 'number' && !isNaN(s.seed) &&
+            typeof s.createdAt === 'number' && !isNaN(s.createdAt) &&
+            typeof s.color === 'string' &&
+            typeof s.shape === 'string' &&
+            typeof s.rarity === 'number' && !isNaN(s.rarity) &&
+            typeof s.weight === 'number' && !isNaN(s.weight) &&
+            typeof s.hardness === 'number' && !isNaN(s.hardness) &&
+            typeof s.magic === 'number' && !isNaN(s.magic)
+          ) {
+            loadedStones.push(s as StoneQualities);
+          }
+        }
+      }
 
-      // Validate currentStoneSeed: must be a number or null, and not NaN
+      const currency = (typeof parsedData.currency === 'number' && !isNaN(parsedData.currency))
+        ? parsedData.currency
+        : defaults.currency;
+
+      const gameSeed = (typeof parsedData.gameSeed === 'number' && !isNaN(parsedData.gameSeed)) || parsedData.gameSeed === null
+        ? parsedData.gameSeed
+        : defaults.gameSeed;
+
+      const opponents_index = (typeof parsedData.opponents_index === 'number' && !isNaN(parsedData.opponents_index))
+        ? parsedData.opponents_index
+        : defaults.opponents_index;
+
+      const salt = (typeof parsedData.salt === 'string')
+        ? parsedData.salt
+        : defaults.salt;
+
       let currentStoneSeed: number | null = null;
-      if (typeof parsedData.currentStoneSeed === 'number' && !isNaN(parsedData.currentStoneSeed)) {
+      if ((typeof parsedData.currentStoneSeed === 'number' && !isNaN(parsedData.currentStoneSeed)) || parsedData.currentStoneSeed === null) {
         currentStoneSeed = parsedData.currentStoneSeed;
-      } else if (parsedData.currentStoneSeed === null) {
-        currentStoneSeed = null;
       }
 
-      // Ensure currentStoneSeed is valid (exists in stones array) or set to a sensible default.
+
       let validatedCurrentStoneSeed: number | null = null;
-      if (currentStoneSeed !== null && stones.includes(currentStoneSeed)) {
+      if (currentStoneSeed !== null && loadedStones.some(s => s.seed === currentStoneSeed)) {
         validatedCurrentStoneSeed = currentStoneSeed;
-      } else if (stones.length > 0) {
-        // If currentStoneSeed is invalid or was null, and stones exist, default to the first stone.
-        validatedCurrentStoneSeed = stones[0];
+      } else if (loadedStones.length > 0) {
+        validatedCurrentStoneSeed = loadedStones[0].seed;
       }
-      // If stones is empty, validatedCurrentStoneSeed remains null.
 
+      loadedStones.sort((a, b) => a.createdAt - b.createdAt); // Sort by createdAt, oldest first
 
       return {
-        stones,
+        stones: loadedStones,
         currency,
-        currentStoneSeed: validatedCurrentStoneSeed
+        currentStoneSeed: validatedCurrentStoneSeed,
+        gameSeed,
+        opponents_index,
+        salt,
       };
     } else {
-      // console.log("No save file found. Starting with default data.");
-      return getDefaultSaveData();
+      return defaults;
     }
   } catch (error) {
-    // console.error("Error loading save data:", error);
-    // console.log("Starting with default data due to error.");
-    return getDefaultSaveData();
+    return defaults;
   }
 }
 
@@ -84,18 +117,29 @@ export function loadData(): SaveData {
  */
 export function saveData(data: SaveData): void {
   try {
-    // Ensure all data being saved is valid, especially numbers (no NaN)
     const cleanData: SaveData = {
-        stones: data.stones.filter(s => typeof s === 'number' && !isNaN(s)),
-        currency: (typeof data.currency === 'number' && !isNaN(data.currency)) ? data.currency : 0,
-        currentStoneSeed: (typeof data.currentStoneSeed === 'number' && !isNaN(data.currentStoneSeed)) ? data.currentStoneSeed : null
+      stones: data.stones.filter(s => // Basic validation for stone objects before saving
+        s && typeof s === 'object' &&
+        typeof s.seed === 'number' && !isNaN(s.seed) &&
+        typeof s.createdAt === 'number' && !isNaN(s.createdAt)
+        // Add other essential field checks if necessary
+      ),
+      currency: (typeof data.currency === 'number' && !isNaN(data.currency)) ? data.currency : 0,
+      currentStoneSeed: (typeof data.currentStoneSeed === 'number' && !isNaN(data.currentStoneSeed)) || data.currentStoneSeed === null
+        ? data.currentStoneSeed
+        : null,
+      gameSeed: (typeof data.gameSeed === 'number' && !isNaN(data.gameSeed)) || data.gameSeed === null
+        ? data.gameSeed
+        : null,
+      opponents_index: (typeof data.opponents_index === 'number' && !isNaN(data.opponents_index))
+        ? data.opponents_index
+        : 0,
+      salt: (typeof data.salt === 'string') ? data.salt : getDefaultSaveData().salt,
     };
 
-    const dataString = JSON.stringify(cleanData, null, 2); // Pretty-print with 2-space indent
+    const dataString = JSON.stringify(cleanData, null, 2);
     fs.writeFileSync(SAVE_PATH, dataString, 'utf-8');
-    // console.log("Game data saved successfully to:", SAVE_PATH);
   } catch (error) {
     // console.error("Error saving game data:", error);
-    // In a real game, might want to notify user or attempt backup.
   }
 }

@@ -8,6 +8,8 @@ export interface StoneQualities {
   weight: number; // 1-100
   shape: string;
   hardness: number; // 0.00-1.00
+  magic: number;
+  createdAt: number;
 }
 
 // --- Constants ---
@@ -75,6 +77,8 @@ export function deriveStoneQualities(seed: number): StoneQualities {
                                                  // Math.floor(prng() * 101) / 100 is better. Let's use that.
   const correctedHardness = Math.floor(prng() * 101) / 100;
 
+  const magic = Math.floor(prng() * 101); // 0-100
+
 
   return {
     seed, // Include the original seed
@@ -83,5 +87,22 @@ export function deriveStoneQualities(seed: number): StoneQualities {
     weight,
     shape,
     hardness: correctedHardness,
+    magic,
+    createdAt: 0, // Placeholder, will be set in createStone
+  };
+}
+
+// --- Stone Creation ---
+/**
+ * Creates a new stone with qualities derived from a seed and a creation timestamp.
+ * @param seed The 32-bit integer seed for the stone.
+ * @returns A StoneQualities object with the createdAt timestamp.
+ */
+export function createStone(seed: number): StoneQualities {
+  const qualities = deriveStoneQualities(seed);
+  const createdAt = Date.now();
+  return {
+    ...qualities,
+    createdAt,
   };
 }
