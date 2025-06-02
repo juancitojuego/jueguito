@@ -1,177 +1,149 @@
 // src/render.ts
 
 import chalk from 'chalk';
-import { StoneQualities, SHAPES } from './stone';
+import { StoneQualities, mulberry32 } from './stone'; // mulberry32 for deterministic glyph placement
+import { MASK_HEIGHT, MASK_WIDTH } from './shapeMasks'; // Assuming these are exported
 
-const ART_HEIGHT = 25;
-const ART_WIDTH = 50;
-
-function stripAnsi(str: string): string {
-  return str.replace(/[\u001B\u009B][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+// Keep this function if it's helpful for color manipulation
+interface HSLColor {
+  h: number;
+  s: number;
+  l: number;
 }
-
-interface HSLColor { h: number; s: number; l: number; }
-
 function getBaseHslForColor(colorName: string): HSLColor {
   switch (colorName.toLowerCase()) {
-    case 'red':     return { h: 0,   s: 100, l: 50 };
-    case 'yellow':  return { h: 60,  s: 100, l: 50 };
-    case 'green':   return { h: 120, s: 100, l: 50 };
-    case 'cyan':    return { h: 180, s: 100, l: 50 };
-    case 'blue':    return { h: 240, s: 100, l: 50 };
-    case 'magenta': return { h: 300, s: 100, l: 50 };
-    case 'white':   return { h: 0,   s: 0,   l: 90 };
-    case 'black':   return { h: 0,   s: 0,   l: 10 };
-    default:        return { h: 0,   s: 0,   l: 50 };
+    case 'red':
+      return { h: 0, s: 100, l: 50 };
+    case 'yellow':
+      return { h: 60, s: 100, l: 50 };
+    case 'green':
+      return { h: 120, s: 100, l: 50 };
+    case 'cyan':
+      return { h: 180, s: 100, l: 50 };
+    case 'blue':
+      return { h: 240, s: 100, l: 50 };
+    case 'magenta':
+      return { h: 300, s: 100, l: 50 };
+    case 'white':
+      return { h: 0, s: 0, l: 90 }; // Brighter white
+    case 'black':
+      return { h: 0, s: 0, l: 20 }; // Darker black for contrast
+    default:
+      return { h: 0, s: 0, l: 50 }; // Default grey
   }
 }
 
-export function renderStoneToAscii(qualities: StoneQualities): string[] {
-  const { color, shape, rarity } = qualities;
+const DENSITY_CHARS = ['░', '▒', '▓', '█']; // Lightest to densest
+const MAGIC_GLYPHS = ['+', '*', '✦']; // Least to most potent
+
+/**
+ * Selects a character based on stone weight and hardness.
+ * @param weight Stone weight (1-100).
+ * @param hardness Stone hardness (0.00-1.00).
+ * @returns A character representing the stone's density.
+ */
+function selectDensityCharacter(weight: number, hardness: number): string {
+  let index = 0;
+  if (weight < 25) index = 0;
+  else if (weight < 50) index = 1;
+  else if (weight < 75) index = 2;
+  else index = 3;
+
+  // Hardness can slightly increase density impression
+  if (hardness > 0.66 && index < DENSITY_CHARS.length - 1) {
+    index++;
+  } else if (hardness < 0.33 && index > 0) {
+    // Softer stones might appear less dense, but let's not make them too light based on hardness alone.
+    // index--; // Optional: uncomment to make soft stones lighter
+  }
+  return DENSITY_CHARS[index];
+}
+
+/**
+ * Determines which magic glyph to use and how many.
+ * @param magic Stone magic score (0-100).
+ * @returns An object with the glyph and count.
+ */
+function getMagicGlyphDetails(magic: number): { glyph: string; count: number } {
+  if (magic < 30) return { glyph: MAGIC_GLYPHS[0], count: magic > 15 ? Math.floor(magic / 10) : 0 }; // 0-2 '+'
+  if (magic < 60) return { glyph: MAGIC_GLYPHS[1], count: Math.floor(magic / 15) }; // 2-3 '*'
+  if (magic < 90) return { glyph: MAGIC_GLYPHS[2], count: Math.floor(magic / 20) }; // 3-4 '✦'
+  return { glyph: MAGIC_GLYPHS[2], count: Math.floor(magic / 15) }; // 5-6 '✦' for very high magic
+}
+
+/**
+ * Renders a stone to a 60x60 string grid.
+ * @param mask The 60x60 boolean shape mask.
+ * @param qualities The stone's qualities.
+ * @returns A 60x60 string grid representing the rendered stone.
+ */
+export function renderStone(mask: boolean[][], qualities: StoneQualities): string[][] {
+  const { weight, hardness, magic, color, seed } = qualities;
+  const outputGrid: string[][] = Array(MASK_HEIGHT)
+    .fill(null)
+    .map(() => Array(MASK_WIDTH).fill(' '));
   const baseHsl = getBaseHslForColor(color);
 
-  let shapeArtLines: string[] = [];
+  const densityChar = selectDensityCharacter(weight, hardness);
+  const { glyph: magicGlyph, count: glyphCount } = getMagicGlyphDetails(magic);
 
-  const chars = {
-    full: '█',
-    threeQuarters: '▓',
-    half: '▒',
-    quarter: '░',
-    space: ' '
-  };
+  // Create a PRNG instance for deterministic glyph placement based on the stone's unique seed
+  const glyphPrng = mulberry32(seed);
 
-  const c = (lOffset: number = 0, char: string = chars.full) => {
-    const L = Math.max(0, Math.min(100, baseHsl.l + lOffset));
-    const S = (baseHsl.s === 0) ? 0 : 100;
-    return chalk.hsl(baseHsl.h, S, L)(char);
-  }
-
-  switch (shape) {
-    case SHAPES[0]: // Cube - Larger and more detailed
-      shapeArtLines = [
-        "        "+c(20,chars.quarter).repeat(18),
-        "       "+c(20,chars.half)+c(15,chars.full).repeat(16)+c(20,chars.half),
-        "      "+c(20,chars.half)+c(15,chars.full)+" ".repeat(14)+c(15,chars.full)+c(20,chars.half),
-        "     "+c(20,chars.threeQuarters)+c(15,chars.full)+" ".repeat(14)+c(15,chars.full)+c(20,chars.threeQuarters),
-        "    "+c(20,chars.full)+c(15,chars.full).repeat(16)+c(20,chars.full),
-        "   "+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
-        "  "+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
-        " "+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
-        ""+c(0,chars.full).repeat(18) + c(-10,chars.threeQuarters).repeat(6),
-        ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6),
-        ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6),
-        ""+c(-5,chars.full).repeat(18) + c(-15,chars.threeQuarters).repeat(6),
-        "    "+c(-20,chars.full)+c(-15,chars.full).repeat(16)+c(-20,chars.full),
-      ];
-      break;
-
-    case SHAPES[1]: // Sphere - Larger, more shading steps
-      shapeArtLines = [
-        "           "+c(25,chars.quarter)+c(30,chars.half)+c(30,chars.half)+c(25,chars.quarter)+"           ",
-        "        "+c(20,chars.half)+c(25,chars.threeQuarters)+c(30,chars.full)+c(30,chars.full)+c(25,chars.threeQuarters)+c(20,chars.half)+"        ",
-        "      "+c(15,chars.threeQuarters)+c(20,chars.full)+c(25,chars.full)+c(25,chars.full)+c(25,chars.full)+c(20,chars.full)+c(15,chars.threeQuarters)+"      ",
-        "    "+c(10,chars.full)+c(15,chars.full)+c(20,chars.full)+c(20,chars.full)+c(20,chars.full)+c(15,chars.full)+c(10,chars.full)+"    ",
-        "  "+c(5,chars.full)+c(10,chars.full)+c(15,chars.full)+c(15,chars.full)+c(15,chars.full)+c(15,chars.full)+c(10,chars.full)+c(5,chars.full)+"  ",
-        " "+c(0,chars.full)+c(5,chars.full)+c(10,chars.full)+c(10,chars.full)+c(10,chars.full)+c(10,chars.full)+c(5,chars.full)+c(0,chars.full)+" ",
-        " "+c(-5,chars.full)+c(0,chars.full)+c(5,chars.full)+c(5,chars.full)+c(5,chars.full)+c(0,chars.full)+c(-5,chars.full)+" ",
-        "  "+c(-10,chars.full)+c(-5,chars.full)+c(0,chars.full)+c(0,chars.full)+c(0,chars.full)+c(-5,chars.full)+c(-10,chars.full)+"  ",
-        "    "+c(-15,chars.full)+c(-10,chars.full)+c(-5,chars.full)+c(-5,chars.full)+c(-10,chars.full)+c(-15,chars.full)+"    ",
-        "      "+c(-20,chars.threeQuarters)+c(-15,chars.full)+c(-10,chars.full)+c(-15,chars.full)+c(-20,chars.threeQuarters)+"      ",
-        "        "+c(-25,chars.half)+c(-20,chars.threeQuarters)+c(-15,chars.full)+c(-20,chars.threeQuarters)+c(-25,chars.half)+"        ",
-        "           "+c(-30,chars.quarter)+c(-25,chars.half)+c(-25,chars.half)+c(-30,chars.quarter)+"           ",
-      ];
-      break;
-
-    case SHAPES[2]: // Pyramid - Larger
-      const pyrWidth = 17;
-      shapeArtLines = [];
-      for (let i = 0; i < Math.ceil(pyrWidth / 2) ; i++) {
-          const numChars = i * 2 + 1;
-          const sidePaddingText = " ".repeat(Math.floor((pyrWidth - numChars) / 2)); // Renamed to avoid conflict
-          const lightOffset = 15 - i * 5;
-          let line = sidePaddingText;
-          for (let j = 0; j < numChars; j++) {
-              const distFromCenter = Math.abs(j - Math.floor(numChars / 2));
-              const charLightOffset = lightOffset - distFromCenter * 5;
-              line += c(charLightOffset, chars.full);
-          }
-          line += sidePaddingText;
-          shapeArtLines.push(line);
+  // Collect all possible glyph positions (where mask is true)
+  const possibleGlyphPositions: { y: number; x: number }[] = [];
+  for (let y = 0; y < MASK_HEIGHT; y++) {
+    for (let x = 0; x < MASK_WIDTH; x++) {
+      if (mask[y][x]) {
+        possibleGlyphPositions.push({ y, x });
       }
-      shapeArtLines.push(c(-15,chars.full).repeat(pyrWidth));
-      const extraLayers = 3;
-      for(let i=0; i < extraLayers; i++) {
-          shapeArtLines.splice(shapeArtLines.length-1, 0, c(-10 - i*2, chars.full).repeat(pyrWidth));
-      }
-      break;
-
-    case SHAPES[3]: // Prism (scaled rectangle)
-      shapeArtLines = [
-        c(10,chars.full).repeat(15),
-        c(5,chars.full) + c(0,chars.threeQuarters).repeat(13) + c(5,chars.full),
-        c(5,chars.full) + c(0,chars.threeQuarters).repeat(13) + c(5,chars.full),
-        c(5,chars.full) + c(0,chars.threeQuarters).repeat(13) + c(5,chars.full),
-        c(5,chars.full) + c(0,chars.threeQuarters).repeat(13) + c(5,chars.full),
-        c(5,chars.full) + c(0,chars.threeQuarters).repeat(13) + c(5,chars.full),
-        c(-5,chars.full).repeat(15)
-      ];
-      break;
-    case SHAPES[4]: // Cylinder (scaled)
-      shapeArtLines = [
-        "   "+c(15,chars.half).repeat(7)+"   ",
-        " "+c(10,chars.threeQuarters)+c(15,chars.full).repeat(5)+c(10,chars.threeQuarters)+" ",
-        " "+c(5,chars.full)+" ".repeat(9)+c(5,chars.full)+" ",
-        " "+c(0,chars.full)+" ".repeat(9)+c(0,chars.full)+" ",
-        " "+c(0,chars.full)+" ".repeat(9)+c(0,chars.full)+" ",
-        " "+c(0,chars.full)+" ".repeat(9)+c(0,chars.full)+" ",
-        " "+c(-5,chars.full)+" ".repeat(9)+c(-5,chars.full)+" ",
-        " "+c(-10,chars.threeQuarters)+c(-5,chars.full).repeat(5)+c(-10,chars.threeQuarters)+" ",
-        "   "+c(-15,chars.half).repeat(7)+"   ",
-      ];
-      break;
-    default:
-      shapeArtLines = [c(0, '?').repeat(ART_WIDTH/2)];
-  }
-
-  if (rarity >= 70) {
-    const middleLineIndex = Math.floor(shapeArtLines.length / 2);
-    if (shapeArtLines[middleLineIndex]) {
-        const strippedLineContent = stripAnsi(shapeArtLines[middleLineIndex]);
-        if (strippedLineContent.length <= ART_WIDTH - 3) {
-             shapeArtLines[middleLineIndex] = shapeArtLines[middleLineIndex] + " " + chalk.yellowBright("★");
-        } else {
-             shapeArtLines.push(" ".repeat(Math.floor(ART_WIDTH/2)-1) + chalk.yellowBright("★"));
-        }
     }
   }
 
-  const finalArt: string[] = [];
-  const artActualHeight = shapeArtLines.length;
-  const topPadding = Math.floor(Math.max(0, (ART_HEIGHT - artActualHeight)) / 2);
-
-  for (let i = 0; i < topPadding; i++) {
-    finalArt.push(' '.repeat(ART_WIDTH));
-  }
-
-  shapeArtLines.forEach(line => {
-    if (finalArt.length < ART_HEIGHT) {
-        const strippedLine = stripAnsi(line);
-        const lineLength = strippedLine.length;
-        const leftPaddingCount = Math.floor(Math.max(0, (ART_WIDTH - lineLength)) / 2);
-        const rightPaddingCount = Math.max(0, ART_WIDTH - lineLength - leftPaddingCount);
-
-        const paddedLine =
-            ' '.repeat(leftPaddingCount) +
-            line +
-            ' '.repeat(rightPaddingCount);
-        // Corrected line: No longer using substring, which caused issues with ANSI codes.
-        finalArt.push(paddedLine);
+  // Shuffle positions for random distribution if there are positions and glyphs to place
+  if (possibleGlyphPositions.length > 0 && glyphCount > 0) {
+    for (let i = possibleGlyphPositions.length - 1; i > 0; i--) {
+      const j = Math.floor(glyphPrng() * (i + 1));
+      [possibleGlyphPositions[i], possibleGlyphPositions[j]] = [possibleGlyphPositions[j], possibleGlyphPositions[i]];
     }
-  });
-
-  while(finalArt.length < ART_HEIGHT) {
-    finalArt.push(' '.repeat(ART_WIDTH));
   }
 
-  return finalArt.slice(0, ART_HEIGHT);
+  const glyphPositions = new Set<string>(); // "y,x"
+  for (let i = 0; i < Math.min(glyphCount, possibleGlyphPositions.length); i++) {
+    glyphPositions.add(`${possibleGlyphPositions[i].y},${possibleGlyphPositions[i].x}`);
+  }
+
+  for (let y = 0; y < MASK_HEIGHT; y++) {
+    for (let x = 0; x < MASK_WIDTH; x++) {
+      if (!mask[y][x]) {
+        outputGrid[y][x] = ' ';
+        continue;
+      }
+
+      let charToRender = densityChar;
+      if (glyphPositions.has(`${y},${x}`)) {
+        charToRender = magicGlyph;
+      }
+
+      // Adjust lightness based on a simple pattern or hardness, for example
+      // This is a placeholder for more sophisticated shading if needed.
+      // For now, main color comes from baseHsl.
+      const lOffset = x % 2 === y % 2 ? 5 : 0; // Subtle checkerboard pattern for texture
+      let finalL = baseHsl.l + lOffset;
+
+      // Glyphs could be brighter/different color
+      if (charToRender === magicGlyph) {
+        finalL = Math.min(100, baseHsl.l + 25); // Make glyphs pop a bit
+        outputGrid[y][x] = chalk.hsl(baseHsl.h, Math.max(30, baseHsl.s - 20), finalL).bold(charToRender);
+      } else {
+        outputGrid[y][x] = chalk.hsl(baseHsl.h, baseHsl.s, finalL)(charToRender);
+      }
+    }
+  }
+  return outputGrid;
 }
+
+// The old renderStoneToAscii might be removed or updated to use renderStone.
+// For now, let's assume it will be replaced or removed in a later step if not needed.
+// Remove stripAnsi and the old SHAPES constant if no longer used.
+// The ART_HEIGHT and ART_WIDTH constants are also from the old renderer.

@@ -10,6 +10,12 @@ This is a command-line interface (CLI) game based on procedurally generated ston
 *   **Inventory Manager**: Manages an in-memory list of player-owned stones, sorted by creation date. Game state (seed, gold, stones, opponent index, salt) is saved to a JSON file (`~/.stone-crafter.json`).
 *   **Robust Persistence**: Auto-saves after most state changes and on exit. Handles missing or corrupted save files gracefully.
 *   **Testing**: Includes a Jest test suite with high coverage for core logic.
+*   **Visual Tool-Set**:
+    *   **Shape Mask Drawer (`shapeMasks.ts`)**: Implements algorithms to generate deterministic, centered, and scaled 60x60 boolean masks for various stone shapes. Supported shapes include: Sphere, Cube, Pyramid, Obelisk, Crystal, and Shard.
+    *   **Stone Renderer (`render.ts`)**: Takes a 60x60 boolean shape mask and the stone's qualities (stats) to produce a deterministic 60x60 string grid. This grid visually represents the stone using:
+        *   ANSI colors based on the stone's color property.
+        *   Density characters (█, ▓, ▒, ░) selected based on the stone's weight and hardness.
+        *   Magic glyphs (✦, ∗, +) overlaid on the stone's surface, determined by its magic score.
 
 ## Prerequisites
 
@@ -62,9 +68,10 @@ This is a command-line interface (CLI) game based on procedurally generated ston
 
 *   `/src`: Contains the TypeScript source code.
     *   `index.ts`: Main game logic and blessed UI.
-    *   `stone.ts`: Stone object definition, quality derivation, PRNG.
+    *   `stone.ts`: Stone object definition, quality derivation, PRNG, shape and color constants.
     *   `store.ts`: Save/load game data logic.
-    *   `render.ts`: ASCII art rendering for stones.
+    *   `shapeMasks.ts`: Generates boolean shape masks for stones.
+    *   `render.ts`: Renders stones to a 60x60 colored string grid using shape masks and stone qualities.
     *   `/tests`: Contains Jest unit tests.
 *   `/dist`: Contains the compiled JavaScript code (after running `npm run build`).
 

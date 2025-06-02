@@ -27,7 +27,7 @@ export function getDefaultSaveData(): SaveData {
     currentStoneSeed: null,
     gameSeed: null,
     opponents_index: 0,
-    salt: "StoneArenaSaltValueV1",
+    salt: 'StoneArenaSaltValueV1',
   };
 }
 
@@ -49,45 +49,55 @@ export function loadData(): SaveData {
       if (Array.isArray(parsedData.stones)) {
         for (const s of parsedData.stones) {
           if (
-            s && typeof s === 'object' &&
-            typeof s.seed === 'number' && !isNaN(s.seed) &&
-            typeof s.createdAt === 'number' && !isNaN(s.createdAt) &&
+            s &&
+            typeof s === 'object' &&
+            typeof s.seed === 'number' &&
+            !isNaN(s.seed) &&
+            typeof s.createdAt === 'number' &&
+            !isNaN(s.createdAt) &&
             typeof s.color === 'string' &&
             typeof s.shape === 'string' &&
-            typeof s.rarity === 'number' && !isNaN(s.rarity) &&
-            typeof s.weight === 'number' && !isNaN(s.weight) &&
-            typeof s.hardness === 'number' && !isNaN(s.hardness) &&
-            typeof s.magic === 'number' && !isNaN(s.magic)
+            typeof s.rarity === 'number' &&
+            !isNaN(s.rarity) &&
+            typeof s.weight === 'number' &&
+            !isNaN(s.weight) &&
+            typeof s.hardness === 'number' &&
+            !isNaN(s.hardness) &&
+            typeof s.magic === 'number' &&
+            !isNaN(s.magic)
           ) {
             loadedStones.push(s as StoneQualities);
           }
         }
       }
 
-      const currency = (typeof parsedData.currency === 'number' && !isNaN(parsedData.currency))
-        ? parsedData.currency
-        : defaults.currency;
+      const currency =
+        typeof parsedData.currency === 'number' && !isNaN(parsedData.currency)
+          ? parsedData.currency
+          : defaults.currency;
 
-      const gameSeed = (typeof parsedData.gameSeed === 'number' && !isNaN(parsedData.gameSeed)) || parsedData.gameSeed === null
-        ? parsedData.gameSeed
-        : defaults.gameSeed;
+      const gameSeed =
+        (typeof parsedData.gameSeed === 'number' && !isNaN(parsedData.gameSeed)) || parsedData.gameSeed === null
+          ? parsedData.gameSeed
+          : defaults.gameSeed;
 
-      const opponents_index = (typeof parsedData.opponents_index === 'number' && !isNaN(parsedData.opponents_index))
-        ? parsedData.opponents_index
-        : defaults.opponents_index;
+      const opponents_index =
+        typeof parsedData.opponents_index === 'number' && !isNaN(parsedData.opponents_index)
+          ? parsedData.opponents_index
+          : defaults.opponents_index;
 
-      const salt = (typeof parsedData.salt === 'string')
-        ? parsedData.salt
-        : defaults.salt;
+      const salt = typeof parsedData.salt === 'string' ? parsedData.salt : defaults.salt;
 
       let currentStoneSeed: number | null = null;
-      if ((typeof parsedData.currentStoneSeed === 'number' && !isNaN(parsedData.currentStoneSeed)) || parsedData.currentStoneSeed === null) {
+      if (
+        (typeof parsedData.currentStoneSeed === 'number' && !isNaN(parsedData.currentStoneSeed)) ||
+        parsedData.currentStoneSeed === null
+      ) {
         currentStoneSeed = parsedData.currentStoneSeed;
       }
 
-
       let validatedCurrentStoneSeed: number | null = null;
-      if (currentStoneSeed !== null && loadedStones.some(s => s.seed === currentStoneSeed)) {
+      if (currentStoneSeed !== null && loadedStones.some((s) => s.seed === currentStoneSeed)) {
         validatedCurrentStoneSeed = currentStoneSeed;
       } else if (loadedStones.length > 0) {
         validatedCurrentStoneSeed = loadedStones[0].seed;
@@ -118,23 +128,28 @@ export function loadData(): SaveData {
 export function saveData(data: SaveData): void {
   try {
     const cleanData: SaveData = {
-      stones: data.stones.filter(s => // Basic validation for stone objects before saving
-        s && typeof s === 'object' &&
-        typeof s.seed === 'number' && !isNaN(s.seed) &&
-        typeof s.createdAt === 'number' && !isNaN(s.createdAt)
+      stones: data.stones.filter(
+        (
+          s // Basic validation for stone objects before saving
+        ) =>
+          s &&
+          typeof s === 'object' &&
+          typeof s.seed === 'number' &&
+          !isNaN(s.seed) &&
+          typeof s.createdAt === 'number' &&
+          !isNaN(s.createdAt)
         // Add other essential field checks if necessary
       ),
-      currency: (typeof data.currency === 'number' && !isNaN(data.currency)) ? data.currency : 0,
-      currentStoneSeed: (typeof data.currentStoneSeed === 'number' && !isNaN(data.currentStoneSeed)) || data.currentStoneSeed === null
-        ? data.currentStoneSeed
-        : null,
-      gameSeed: (typeof data.gameSeed === 'number' && !isNaN(data.gameSeed)) || data.gameSeed === null
-        ? data.gameSeed
-        : null,
-      opponents_index: (typeof data.opponents_index === 'number' && !isNaN(data.opponents_index))
-        ? data.opponents_index
-        : 0,
-      salt: (typeof data.salt === 'string') ? data.salt : getDefaultSaveData().salt,
+      currency: typeof data.currency === 'number' && !isNaN(data.currency) ? data.currency : 0,
+      currentStoneSeed:
+        (typeof data.currentStoneSeed === 'number' && !isNaN(data.currentStoneSeed)) || data.currentStoneSeed === null
+          ? data.currentStoneSeed
+          : null,
+      gameSeed:
+        (typeof data.gameSeed === 'number' && !isNaN(data.gameSeed)) || data.gameSeed === null ? data.gameSeed : null,
+      opponents_index:
+        typeof data.opponents_index === 'number' && !isNaN(data.opponents_index) ? data.opponents_index : 0,
+      salt: typeof data.salt === 'string' ? data.salt : getDefaultSaveData().salt,
     };
 
     const dataString = JSON.stringify(cleanData, null, 2);
