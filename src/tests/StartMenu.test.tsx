@@ -1,7 +1,8 @@
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 import StartMenu from '@src/components/StartMenu';
-import { currentSaveData, setCurrentSaveData, saveData, initializeGamePrng, getDefaultSaveData } from '@src/store';
-import 'jest-localstorage-mock'; // Mock localStorage for saveData calls
+import type { GameState } from '@src/interfaces'; // Import GameState type
+// No need to import createStone from '@src/stone' as the component doesn't call it directly.
+// Mulberry32 and generateNewStoneSeed are imported by the component for client-side seed generation.
 
 // Mock utility functions used by StartMenu
 jest.mock('@src/utils', () => ({
@@ -9,34 +10,36 @@ jest.mock('@src/utils', () => ({
   showMessage: jest.fn(),
 }));
 
-// Mock store functions (saveData and initializeGamePrng are key)
-// We want to verify they are called, not their full side effects here.
-jest.mock('@src/store', () => {
-  const originalStore = jest.requireActual('@src/store');
-  return {
-    ...originalStore,
-    saveData: jest.fn(),
-    initializeGamePrng: jest.fn(),
-    // We will spy on setCurrentSaveData or check its effects directly
-  };
-});
+// Mock the refactored store
+const mockResetGameDefaults = jest.fn();
+let mockGameState: Partial<GameState> = {}; // Use Partial for initial empty mock
 
-// Mock stone creation functions
-jest.mock('@src/stone', () => ({
-  ...jest.requireActual('@src/stone'),
-  createStone: jest.fn((seed) => ({ 
-    seed, name: `Stone ${seed}`, color: 'TestColor', shape: 'TestShape', 
-    rarity: 50, hardness: 0.5, magic: 50, weight: 50, createdAt: Date.now() 
-  })),
-  generateNewStoneSeed: jest.fn(() => Math.floor(Math.random() * 100000)), // Return a random seed
-  mulberry32: jest.fn((seed) => () => seed / 100000), // Simple PRNG mock for seed generation
+jest.mock('@src/store', () => ({
+  // gameState is not directly read by StartMenu for its core logic, 
+  // but App.tsx uses it to show/hide StartMenu. So, not strictly needed here.
+  // gameState: new Proxy({}, { get: (target, prop) => mockGameState[prop as keyof GameState] }),
+  resetGameDefaults: mockResetGameDefaults,
+  // Re-export UI-specific utils if StartMenu imports them from store
+  logMessage: jest.requireActual('@src/utils').logMessage,
+  showMessage: jest.requireActual('@src/utils').showMessage,
 }));
+
+// Mock stone utilities used directly by StartMenu for seed generation
+// (mulberry32, generateNewStoneSeed)
+// The component imports these, so we mock them at the source.
+const mockGenerateNewStoneSeed = jest.fn(() => 1234567); // Default mock generated seed
+jest.mock('@src/stone', () => ({
+  ...jest.requireActual('@src/stone'), // Keep other exports like COLORS, SHAPES if needed by other parts
+  generateNewStoneSeed: mockGenerateNewStoneSeed,
+  mulberry32: jest.fn((seed) => () => seed / 0xffffffff), // Simplified mock for mulberry32
+}));
+
 
 describe('StartMenu Component', () => {
   beforeEach(() => {
-    setCurrentSaveData(getDefaultSaveData()); // Ensure clean state
-    localStorage.clear();
     jest.clearAllMocks();
+    // Reset mockGameState if it were used for reading in StartMenu tests
+    // mockGameState = { gameSeed: null }; // Example initial state for tests
   });
 
   afterEach(cleanup);
@@ -48,65 +51,56 @@ describe('StartMenu Component', () => {
     expect(screen.getByText('Start Game')).toBeInTheDocument();
   });
 
-  test('entering player name and clicking Start Game updates playerName in store', () => {
+  test('clicking Start Game calls resetGameDefaults with player name and resolved seed', () => {
     render(() => <StartMenu />);
     fireEvent.input(screen.getByLabelText(/Player Name/i), { target: { value: 'Test Player' } });
+    fireEvent.input(screen.getByLabelText(/Game Seed/i), { target: { value: '12345' } });
     fireEvent.click(screen.getByText('Start Game'));
     
-    expect(currentSaveData.playerName).toBe('Test Player');
-    expect(initializeGamePrng).toHaveBeenCalled(); // Should be called with a seed
-    expect(saveData).toHaveBeenCalled();
-    // Check if showMessage was called regarding game start
-    const { showMessage } = require('@src/utils');
-    expect(showMessage).toHaveBeenCalledWith(expect.stringContaining('Game started for Test Player'), expect.any(Number), 'success');
+    expect(mockResetGameDefaults).toHaveBeenCalledWith({
+      newGameSeed: 12345,
+      playerName: 'Test Player',
+    });
   });
 
-  test('leaving seed blank and clicking Start Game generates a random seed', () => {
+  test('clicking Start Game with blank seed generates and uses a random seed', () => {
     render(() => <StartMenu />);
-    fireEvent.input(screen.getByLabelText(/Player Name/i), { target: { value: 'RandomSeedPlayer' } });
+    fireEvent.input(screen.getByLabelText(/Player Name/i), { target: { value: 'Random Player' } });
+    fireEvent.input(screen.getByLabelText(/Game Seed/i), { target: { value: '' } }); // Blank seed
     fireEvent.click(screen.getByText('Start Game'));
 
-    expect(currentSaveData.gameSeed).not.toBeNull();
-    expect(typeof currentSaveData.gameSeed).toBe('number');
-    expect(initializeGamePrng).toHaveBeenCalledWith(currentSaveData.gameSeed);
-    expect(saveData).toHaveBeenCalled();
+    expect(mockGenerateNewStoneSeed).toHaveBeenCalled(); // From client-side random generation
+    expect(mockResetGameDefaults).toHaveBeenCalledWith({
+      newGameSeed: expect.any(Number), // mockGenerateNewStoneSeed returns a number
+      playerName: 'Random Player',
+    });
     const { showMessage } = require('@src/utils');
     expect(showMessage).toHaveBeenCalledWith(expect.stringContaining('No seed entered. Using random seed:'), expect.any(Number), 'info');
   });
-
-  test('entering a valid number as seed uses that seed', () => {
-    render(() => <StartMenu />);
-    fireEvent.input(screen.getByLabelText(/Game Seed/i), { target: { value: '12345' } });
-    fireEvent.click(screen.getByText('Start Game'));
-
-    expect(currentSaveData.gameSeed).toBe(12345);
-    expect(initializeGamePrng).toHaveBeenCalledWith(12345);
-    expect(saveData).toHaveBeenCalled();
-  });
   
-  test('entering non-numeric string as seed generates a derived seed', () => {
+  test('clicking Start Game with non-numeric seed generates and uses a derived seed', () => {
     render(() => <StartMenu />);
-    fireEvent.input(screen.getByLabelText(/Game Seed/i), { target: { value: 'testseedstring' } });
+    fireEvent.input(screen.getByLabelText(/Player Name/i), { target: { value: 'Derived Player' } });
+    fireEvent.input(screen.getByLabelText(/Game Seed/i), { target: { value: 'not-a-number' } });
     fireEvent.click(screen.getByText('Start Game'));
 
-    expect(currentSaveData.gameSeed).not.toBeNull();
-    expect(typeof currentSaveData.gameSeed).toBe('number');
-    expect(currentSaveData.gameSeed).not.toBe(NaN); // Ensure it's a valid number
-    expect(initializeGamePrng).toHaveBeenCalledWith(currentSaveData.gameSeed);
-    expect(saveData).toHaveBeenCalled();
+    expect(mockGenerateNewStoneSeed).toHaveBeenCalled(); // From client-side derived generation
+    expect(mockResetGameDefaults).toHaveBeenCalledWith({
+      newGameSeed: expect.any(Number), // mockGenerateNewStoneSeed returns a number
+      playerName: 'Derived Player',
+    });
     const { showMessage } = require('@src/utils');
     expect(showMessage).toHaveBeenCalledWith(expect.stringContaining('Invalid number for seed. Generated one based on text:'), expect.any(Number), 'info');
   });
 
-  test('starting a game should create a first stone and equip it', () => {
+  test('uses "Player" as default name if player name input is blank', () => {
     render(() => <StartMenu />);
+    fireEvent.input(screen.getByLabelText(/Game Seed/i), { target: { value: '777' } });
     fireEvent.click(screen.getByText('Start Game'));
 
-    expect(currentSaveData.stones.length).toBe(1);
-    expect(currentSaveData.equippedStone).not.toBeNull();
-    expect(currentSaveData.equippedStone?.seed).toBe(currentSaveData.stones[0].seed);
-    const { createStone, generateNewStoneSeed: mockGenSeed } = require('@src/stone');
-    expect(mockGenSeed).toHaveBeenCalled(); // generateNewStoneSeed from stone.ts
-    expect(createStone).toHaveBeenCalled(); // createStone from stone.ts
+    expect(mockResetGameDefaults).toHaveBeenCalledWith({
+      newGameSeed: 777,
+      playerName: 'Player', // Default name
+    });
   });
 });

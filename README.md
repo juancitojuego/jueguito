@@ -1,76 +1,67 @@
-# Stone-Arena CLI Game
+# Stone-Arena Game (SolidJS Edition)
 
-This is a command-line interface (CLI) game based on procedurally generated stones. This repository contains the foundational layer for the game.
+This is a web-based game based on procedurally generated stones, now featuring a UI built with SolidJS. This repository contains the game application.
 
 ## Features Implemented
 
-*   **Seed & RNG Core**: Prompts for a seed on the first run (or loads from save). Initializes a deterministic RNG for all game events. Stone properties (color, shape, weight, hardness, magic) are derived deterministically from their own seeds.
-*   **Stone Generator Utility**: A `createStone()` function generates fully-typed stone objects with random properties and a creation timestamp.
-*   **Global Opponent Queue**: A pre-seeded list of opponent stones is built at game start and persisted. The queue regenerates when exhausted.
-*   **Inventory Manager**: Manages an in-memory list of player-owned stones, sorted by creation date. Game state (seed, gold, stones, opponent index, salt) is saved to a JSON file (`~/.stone-crafter.json`).
-*   **Robust Persistence**: Auto-saves after most state changes and on exit. Handles missing or corrupted save files gracefully.
-*   **Testing**: Includes a Jest test suite with high coverage for core logic.
-*   **Visual Tool-Set**:
-    *   **Shape Mask Drawer (`shapeMasks.ts`)**: Implements algorithms to generate deterministic, centered, and scaled 60x60 boolean masks for various stone shapes. Supported shapes include: Sphere, Cube, Pyramid, Obelisk, Crystal, and Shard.
-    *   **Stone Renderer (`render.ts`)**: Takes a 60x60 boolean shape mask and the stone's qualities (stats) to produce a deterministic 60x60 string grid. This grid visually represents the stone using:
-        *   ANSI colors based on the stone's color property.
-        *   Density characters (█, ▓, ▒, ░) selected based on the stone's weight and hardness.
-        *   Magic glyphs (✦, ∗, +) overlaid on the stone's surface, determined by its magic score.
-*   **Console Log Panel**: A scrollable panel at the bottom of the screen displays game events, actions, saves, and errors. It acts as a circular buffer, showing the latest 100 lines, with each message timestamped.
+*   **Seed & RNG Core**: The game uses a deterministic Random Number Generator (RNG) for game events, seeded either by user input or randomly. Stone properties (color, shape, weight, hardness, magic) are derived deterministically from their own seeds.
+*   **Stone Generation**: A system (`createStone`, `deriveStoneQualities`) generates fully-typed stone objects with varied properties and a creation timestamp.
+*   **Opponent System**: Opponents with their own stones are generated and managed, providing challenges for the player.
+*   **Inventory Management**: Manages a list of player-owned stones. Game state (game seed, player stats, currency, stones, equipped stone, opponent progress) is saved to browser `localStorage`.
+*   **Robust Persistence**: Auto-saves can be triggered after key actions. Handles loading from `localStorage` or starting a fresh game.
+*   **Testing**: Includes a Jest test suite. Core logic in services is well-tested. (Note: Some UI component tests have known issues with JSDOM/reactivity simulation under Jest).
+*   **Visual Stone Rendering**:
+    *   **Shape Masks (`shapeMasks.ts`)**: Generates 60x60 boolean masks for various stone shapes (Sphere, Cube, Pyramid, etc.).
+    *   **SVG Stone Renderer (`render.tsx`)**: Takes shape masks and stone qualities to produce a deterministic SVG visual representation of the stone, including color, and effects for magic/density.
+*   **Decoupled Services**: Core game logic is handled by:
+    *   `GameStateManager`: Manages the overall game state, persistence, and core game actions.
+    *   `RandomService`: Provides seeded random number generation for deterministic outcomes.
+    *   `FightService`: Manages the logic for fights between stones.
+*   **Reactive UI**: Built with SolidJS, providing a dynamic and interactive web interface.
+    *   **Console Log Panel**: A scrollable panel displays game events, actions, saves, and errors, with timestamped messages.
+    *   **Message Line**: Displays temporary messages to the user.
 
-## User Interface
+## User Interface (SolidJS Web App)
 
-The game is played entirely within the terminal using a text-based user interface powered by the `blessed` library.
+The game is played in a web browser, with a UI built using SolidJS.
 
-### Main Menu
+### Main Game View
+*   **Stone Info**: Displays details of the currently equipped stone and player currency.
+*   **Stone Preview**: Shows an SVG visual representation of the equipped stone.
+*   **Main Menu**:
+    *   **Crack Open Current Stone**: Consumes the equipped stone to reveal new ones.
+    *   **Fight**: Battles the equipped stone against the current opponent.
+    *   **Salvage**: Destroys the equipped stone for currency.
+    *   **Inventory**: Opens the inventory view.
 
-The central navigation point of the game. It lists the primary actions available to the player:
-*   **Crack Open Current Stone**: Consumes the currently selected stone to reveal one or more new stones, which are added to the inventory.
-*   **Inventory**: Opens the inventory screen to manage and select stones.
-*   **Fight**: Initiates a battle between the player's currently selected stone and an opponent from the queue.
-*   **Salvage**: Destroys the currently selected stone in exchange for Gold based on its rarity.
-*   **Quit**: Exits the game, saving the current state.
-
-### Inventory Screen
-
-Allows players to manage their collection of stones:
-*   **Stone List**: A scrollable list on the left displays all stones currently in the player's inventory. Players can navigate this list using arrow keys.
-*   **Visual Preview**: A 60x60 area on the right shows a visual representation of the stone currently highlighted in the list.
-*   **Details Panel**: Below the visual preview, a panel displays the full properties of the highlighted stone: Seed, Color, Shape, Rarity, Hardness (formatted to 2 decimal places), Weight (formatted to 2 decimal places), Magic (formatted to 2 decimal places), and CreatedAt (timestamp of creation).
-*   **Exiting**: Players can return to the Main Menu by pressing the `Esc` or `q` key. Selecting a stone (pressing Enter) also returns to the main menu with that stone as the active one.
-
-### Console Log Panel
-Positioned at the bottom of the screen (below the main layout but above the single-line message bar), this panel provides a running log of game activities. It's a scrollable box that keeps the latest 100 messages (approximately). Each message is timestamped and records significant events such as:
-*   Game startup and shutdown.
-*   Saving and loading data (including errors).
-*   Stone actions: cracking open, fighting, salvaging.
-*   Opponent queue regeneration.
-*   Errors and important system messages.
+### Inventory View
+*   Lists all player-owned stones.
+*   Allows selection of a stone to view its details and preview (using `StonePreview` component).
+*   Allows setting a selected stone as the currently equipped stone.
+*   Provides a button to close and return to the main game view.
 
 ## Gameplay Actions & Economy
+(This section largely remains the same as the core game logic is preserved)
+*   **Crack Open Current Stone Action**: Consumes equipped stone, generates 1 new stone, with a 10% chance for a second and 1% for a third.
+*   **Fight Action**: Player's stone vs. opponent's. Power calculated with +/-15% variance.
+    *   **Win**: +10 currency, 20% chance for an extra stone.
+    *   **Loss**: 30% chance for player's stone to be destroyed.
+    *   **Tie**: No changes.
+    *   Advances to the next opponent.
+*   **Gold Economy**: Currency earned from fights.
+*   **Salvage Action**: Destroy equipped stone for Gold (rarity * 10).
 
-*   **Crack Open Current Stone Action**:
-    *   This action is used to generate new stones. It consumes the currently selected stone, effectively "opening" it to reveal new ones.
-    *   It always creates 1 new stone.
-    *   There is a 10% chance for a second extra stone to be generated.
-    *   There is an independent 1% chance for a third extra stone to be generated.
-    *   All newly generated stones are added to the player's inventory.
-*   **Fight Action**:
-    *   Players use their currently selected stone to battle an opponent's stone from a predefined queue.
-    *   Each stone's power is calculated based on its attributes (rarity, hardness, magic, weight). A variance of ±15% is applied to both the player's and opponent's power for each fight to introduce unpredictability.
-    *   **Outcomes**:
-        *   **Win**: If the player's stone power is greater, the player wins 10 Gold. There is also a 20% chance of finding an additional new stone, which is added to their inventory.
-        *   **Loss**: If the player's stone power is less, there are no Gold changes. However, there is a 30% chance that the player's stone used in the fight is destroyed and removed from their inventory.
-        *   **Tie**: If powers are equal, there are no changes to Gold or stones.
-    *   After each fight, the game advances to the next opponent in the queue.
-*   **Gold Economy**:
-    *   Gold is the primary in-game currency.
-    *   It is primarily earned by winning fights against opponents.
-    *   The player's current Gold balance is displayed in the user interface.
-*   **Salvage Action**:
-    *   Players can choose to "Salvage" their currently selected stone.
-    *   This action destroys the stone.
-    *   In return, the player gains Gold equivalent to the stone's rarity multiplied by 10.
+## Tech Stack / Key Technologies
+
+*   **Frontend Framework**: SolidJS
+*   **Build Tool / Dev Server**: Vite
+*   **Core Services**:
+    *   `GameStateManager`
+    *   `FightService`
+    *   `RandomService`
+*   **Language**: TypeScript 5.x
+*   **Testing**: Jest (with `ts-jest` and SolidJS testing utilities)
+*   **PRNG**: `seedrandom` (used by `RandomService`)
 
 ## Prerequisites
 
@@ -90,37 +81,31 @@ Positioned at the bottom of the screen (below the main layout but above the sing
     npm install
     ```
 
-3.  **Build the TypeScript code:**
-    ```bash
-    npm run build
-    ```
-
-4.  **Run the game:**
-    ```bash
-    npm start
-    ```
-    Alternatively, if you've linked the package or installed it globally (after `npm link` or `npm install -g .` from the project root):
-    ```bash
-    stone-crafter
-    ```
-
-## Development
-
-*   **Run in development mode (auto-rebuild on changes):**
+3.  **Run the development server:**
     ```bash
     npm run dev
     ```
-    This script uses `tsc -w` for continuous TypeScript compilation and `nodemon` to restart the application when `dist/index.js` changes. Ensure `nodemon` is installed (e.g., `npm install -g nodemon` or add it to `devDependencies`).
+    This will start the Vite dev server, typically on `http://localhost:3000`.
+
+4.  **Building the application (for production):**
+    ```bash
+    npm run build
+    ```
+    Output will be in the `/dist` directory. You can preview the build with `npm run preview`.
+
+## Development
 
 *   **Run tests:**
     ```bash
     npm test
     ```
+    Note: Core logic in services is well-tested. Some UI component tests might have known issues related to JSDOM interactions or advanced reactivity simulation under Jest.
 
-*   **Linting/Formatting**: ESLint and Prettier are intended for use (configuration may be needed).
+*   **Linting/Formatting**: ESLint and Prettier are set up.
+    *   `npm run lint`
+    *   `npm run format`
 
 ## Continuous Integration (CI)
-
 This project uses GitHub Actions for Continuous Integration. The CI workflow is defined in `.github/workflows/main.yml` and includes the following:
 *   **Triggers**: Automatically runs on every `push` and `pull_request` to the `main` branch.
 *   **Environment**: Uses Ubuntu latest with Node.js version 20.x.
@@ -131,25 +116,39 @@ This project uses GitHub Actions for Continuous Integration. The CI workflow is 
     4.  Runs the linter (`npm run lint`).
     5.  Executes automated tests (`npm test`).
     6.  Performs a project build (`npm run build`).
-This ensures that code contributions are automatically checked for quality, style, and correctness.
 
 ## Project Structure
 
+*   `/public`: Static assets for Vite.
 *   `/src`: Contains the TypeScript source code.
-    *   `index.ts`: Main game logic and blessed UI.
-    *   `stone.ts`: Stone object definition, quality derivation, PRNG, shape and color constants.
-    *   `store.ts`: Save/load game data logic.
+    *   `/components`: SolidJS UI components.
+    *   `/interfaces`: TypeScript interface definitions for services and data structures.
+    *   `/services`: Core game logic services (`GameStateManager`, `FightService`, `RandomService`, `serviceInstances`).
+    *   `App.tsx`: Main SolidJS application component.
+    *   `index.html`: Entry point HTML for Vite.
+    *   `index.tsx`: Main script to render the SolidJS App.
+    *   `store.ts`: SolidJS store providing reactive state and actions bridged from `GameStateManager`.
+    *   `stone.ts`: Stone object definition, quality derivation constants (COLORS, SHAPES), and creation utilities.
     *   `shapeMasks.ts`: Generates boolean shape masks for stones.
-    *   `render.ts`: Renders stones to a 60x60 colored string grid using shape masks and stone qualities.
+    *   `render.tsx`: Renders stones to SVG using shape masks and stone qualities.
+    *   `utils.ts`: Utility functions (e.g., for UI messages).
     *   `/tests`: Contains Jest unit tests.
-*   `/dist`: Contains the compiled JavaScript code (after running `npm run build`).
-*   `.github/workflows`: Contains GitHub Actions workflow configurations (e.g., `main.yml` for CI).
+        *   `/services`: Tests for service classes.
+        *   Other tests for core logic and components.
+*   `/dist`: Contains the compiled/built application (after running `npm run build`).
+*   `.github/workflows`: Contains GitHub Actions workflow configurations.
+*   `jest.config.js`: Jest configuration.
+*   `vite.config.ts`: Vite configuration.
+*   `tsconfig.json`: TypeScript configuration.
 
-## Language & Tools
+## Coding Standards / Typing
 
-*   TypeScript 5.x
-*   Node.js 20.x
-*   blessed (for terminal UI)
-*   seedrandom (for deterministic RNG)
-*   chalk (for terminal colors)
-*   Jest (for testing)
+*   The project is written in TypeScript with a focus on strong typing, using ESLint and Prettier for code style.
+*   Interfaces for core services and data structures are defined in `src/interfaces/`.
+
+## Deliverables
+
+*   Fully-typed source code for the game.
+*   This updated `README.md` file.
+*   Unit tests for core logic and components.
+*   A functional SolidJS web application.

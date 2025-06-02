@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "commonjs",
+    "target": "ES2022", // Keep or upgrade to ESNext if needed
+    "module": "ESNext",  // Change to ESNext for import.meta and modern module features
+    "moduleResolution": "bundler", // Or "node", "nodenext". Vite prefers "bundler" or "ESNext"
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": ".", // Added baseUrl

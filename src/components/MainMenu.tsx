@@ -1,18 +1,28 @@
 import { Component } from 'solid-js';
 import {
-  currentSaveData,
-  setCurrentSaveData,
-  currentStoneDetails,
-  setCurrentStoneDetails,
-  saveData,
+  // Import from the new store
+  equippedStoneDetails,
+  currentOpponentStore, // Use this instead of old getCurrentOpponent
+  updateCurrency,
   addStoneToInventory,
-  getCurrentOpponent,
-  // generateOpponentList, // Usually called on load or when queue is empty by getCurrentOpponent
-  getGamePrng,
+  removeStoneFromInventory,
+  equipStone,
+  advanceOpponent,
+  saveGame,
+  // gameState, // Not directly needed if using specific actions/selectors
 } from '../store';
-import { createStone, generateNewStoneSeed, calculateStonePower, StoneQualities } from '../stone';
+import { 
+  fightServiceInstance, 
+  randomServiceInstance 
+} from '../services/serviceInstances';
+import { 
+  createStone, 
+  generateNewStoneSeed, 
+  // calculateStonePower is now part of FightService
+} from '../stone';
+import type { StoneQualities } from '../interfaces'; // Import type directly
 import { logMessage, showMessage } from '../utils';
-import { produce } from 'solid-js/store';
+// No need for produce from solid-js/store directly in component if actions handle updates
 
 interface MainMenuProps {
   toggleInventory: () => void;
@@ -20,140 +30,111 @@ interface MainMenuProps {
 
 const MainMenu: Component<MainMenuProps> = (props) => {
 
-  const handleCrackOpen = () => {
-    const equipped = currentStoneDetails();
+  const handleCrackOpen = async () => {
+    const equipped = equippedStoneDetails(); // Use new derived memo
     if (!equipped) {
       showMessage('No stone equipped to crack open!', 3000, 'error');
       return;
     }
 
     logMessage(`Attempting to crack open stone: ${equipped.seed}`);
+    
+    removeStoneFromInventory(equipped.seed);
 
-    // Remove from inventory
-    setCurrentSaveData(
-      produce(s => {
-        s.stones = s.stones.filter(stone => stone.seed !== equipped.seed);
-      })
-    );
-
-    const prng = getGamePrng();
     const newStones: StoneQualities[] = [];
-    const stone1Seed = generateNewStoneSeed(prng);
+    // Use randomServiceInstance for probabilities and seed generation
+    const stone1Seed = generateNewStoneSeed(() => randomServiceInstance.getRandom());
     const stone1 = createStone(stone1Seed);
     newStones.push(stone1);
-    addStoneToInventory(stone1); // This updates currentSaveData.stones
+    addStoneToInventory(stone1);
 
-    if (prng() < 0.1) { // 10% chance for a second stone
-      const stone2Seed = generateNewStoneSeed(prng);
+    if (randomServiceInstance.getRandom() < 0.1) { // 10% chance
+      const stone2Seed = generateNewStoneSeed(() => randomServiceInstance.getRandom());
       const stone2 = createStone(stone2Seed);
       newStones.push(stone2);
       addStoneToInventory(stone2);
     }
-    if (prng() < 0.01) { // 1% chance for a third stone (compounded)
-      const stone3Seed = generateNewStoneSeed(prng);
+    if (randomServiceInstance.getRandom() < 0.01) { // 1% chance
+      const stone3Seed = generateNewStoneSeed(() => randomServiceInstance.getRandom());
       const stone3 = createStone(stone3Seed);
       newStones.push(stone3);
       addStoneToInventory(stone3);
     }
     
-    // Determine new equipped stone
-    let newEquippedStone: StoneQualities | null = null;
-    if (newStones.length > 0) {
-      newEquippedStone = newStones[0];
-    } else if (currentSaveData.stones.length > 0) {
-      // This case should ideally not be hit if addStoneToInventory works correctly
-      // and newStones always has at least one. But as a fallback:
-      newEquippedStone = currentSaveData.stones[0];
+    // Determine new equipped stone. equipStone action will update equippedStoneDetails memo.
+    const newEquipTarget = newStones.length > 0 ? newStones[0] : null;
+    // If no new stones, and old one removed, need to check inventory for next available.
+    // GameStateManager's removeStoneFromInventory already handles equipping next available if current is removed.
+    // So, if newStones exist, equip the first one. Otherwise, GSM already handled it.
+    if (newEquipTarget) {
+        equipStone(newEquipTarget.seed);
+    } else {
+        // If no new stones were found, and the old one was removed,
+        // GameStateManager's removeStoneFromInventory should have set a new default or null.
+        // We might not need to explicitly call equipStone(null) here if removeStoneFromInventory handles it.
+        // For clarity, if newStones is empty, we ensure nothing is equipped if inventory becomes empty.
+        // This logic is now better handled in GameStateManager.removeStoneFromInventory.
+        // The equipStone call after adding new stones is the main path.
     }
-    
-    setCurrentSaveData('equippedStone', newEquippedStone);
-    setCurrentStoneDetails(newEquippedStone);
 
-    saveData();
-    logMessage(`Cracked open ${equipped.seed}. Found ${newStones.length} new stones. New equipped: ${newEquippedStone?.seed || 'none'}`);
+    await saveGame();
+    logMessage(`Cracked open ${equipped.seed}. Found ${newStones.length} new stones. New equipped: ${newEquipTarget?.seed || 'check store'}`);
     showMessage(`Cracked open stone ${equipped.seed}. Obtained ${newStones.length} new stone(s).`, 4000, 'success');
   };
 
-  const handleFight = () => {
-    const playerStone = currentStoneDetails();
+  const handleFight = async () => {
+    const playerStone = equippedStoneDetails();
+    const opponentStone = currentOpponentStore(); // Use new derived memo
+
     if (!playerStone) {
       showMessage('No stone equipped to fight with!', 3000, 'error');
       return;
     }
-
-    const opponent = getCurrentOpponent(); // This might trigger queue regeneration
-    if (!opponent || opponent.stones.length === 0) {
+    if (!opponentStone) {
       showMessage('No opponents available to fight!', 3000, 'error');
-      // getCurrentOpponent should log details if queue is empty or regenerated
       return;
     }
-    const opponentStone = opponent.stones[0]; // Assume opponent uses their first stone
 
-    logMessage(`Fight started: Player (${playerStone.seed}) vs Opponent ${opponent.name} (${opponentStone.seed})`);
+    // FightService now takes randomService instance in constructor, no need to pass prng if methods use it
+    const outcome = fightServiceInstance.executeFight(playerStone, opponentStone);
 
-    const prng = getGamePrng();
-    let playerPower = calculateStonePower(playerStone) * (1 + (prng() * 0.3 - 0.15)); // +/- 15% variance
-    let opponentPower = calculateStonePower(opponentStone) * (1 + (prng() * 0.3 - 0.15));
+    logMessage(outcome.logMessage); // Use log message from fight outcome
+    showMessage(outcome.logMessage.substring(outcome.logMessage.indexOf("Player wins!") !== -1 || outcome.logMessage.indexOf("Opponent wins.") !== -1 || outcome.logMessage.indexOf("It's a tie.") !== -1 ? outcome.logMessage.indexOf("Player wins!") : outcome.logMessage.indexOf("Opponent wins.") !== -1 ? outcome.logMessage.indexOf("Opponent wins.") : outcome.logMessage.indexOf("It's a tie.") : 0), 5000, 
+                outcome.winner === 'player' ? 'success' : outcome.winner === 'opponent' ? 'error' : 'info');
 
-    let fightMessage = `Your stone (P: ${playerPower.toFixed(2)}) vs Opponent (P: ${opponentPower.toFixed(2)}). `;
-    let outcomeType: 'success' | 'error' | 'info' = 'info';
 
-    if (playerPower > opponentPower) {
-      setCurrentSaveData('currency', c => c + 10);
-      fightMessage += `You WIN! +10 currency. Current: ${currentSaveData.currency}.`;
-      outcomeType = 'success';
-      if (prng() < 0.2) { // 20% chance for an extra stone
-        const newStoneSeed = generateNewStoneSeed(prng);
-        const extraStone = createStone(newStoneSeed);
-        addStoneToInventory(extraStone);
-        fightMessage += ' You found an extra stone!';
-      }
-    } else if (playerPower < opponentPower) {
-      fightMessage += 'You LOST. ';
-      outcomeType = 'error';
-      if (prng() < 0.3) { // 30% chance to destroy player's stone
-        const lostStoneSeed = playerStone.seed;
-        setCurrentSaveData(produce(s => {
-          s.stones = s.stones.filter(stone => stone.seed !== lostStoneSeed);
-          if (s.equippedStone?.seed === lostStoneSeed) {
-            s.equippedStone = s.stones.length > 0 ? s.stones[0] : null;
-          }
-        }));
-        setCurrentStoneDetails(currentSaveData.equippedStone);
-        fightMessage += 'Your stone was destroyed!';
-      }
-    } else {
-      fightMessage += "It's a TIE.";
+    if (outcome.currencyChange && outcome.currencyChange !== 0) {
+      updateCurrency(outcome.currencyChange);
     }
-
-    setCurrentSaveData('opponents_index', i => i + 1);
-    saveData();
-    logMessage(`Fight result: ${fightMessage}. Next opponent index: ${currentSaveData.opponents_index}`);
-    showMessage(fightMessage, 5000, outcomeType);
+    if (outcome.stoneLostByPlayer && playerStone) { // Ensure playerStone is not null
+      removeStoneFromInventory(playerStone.seed);
+      // equipStone(null) or next available is handled by removeStoneFromInventory
+    }
+    if (outcome.newStoneGainedByPlayer) {
+      addStoneToInventory(outcome.newStoneGainedByPlayer);
+    }
+    
+    advanceOpponent();
+    await saveGame();
   };
 
-  const handleSalvage = () => {
-    const stoneToSalvage = currentStoneDetails();
+  const handleSalvage = async () => {
+    const stoneToSalvage = equippedStoneDetails();
     if (!stoneToSalvage) {
       showMessage('No stone equipped to salvage!', 3000, 'error');
       return;
     }
 
     logMessage(`Attempting to salvage stone: ${stoneToSalvage.seed}`);
-    const salvageValue = stoneToSalvage.rarity * 10; // Example calculation
+    const salvageValue = stoneToSalvage.rarity * 10;
 
-    setCurrentSaveData(produce(s => {
-      s.currency += salvageValue;
-      s.stones = s.stones.filter(stone => stone.seed !== stoneToSalvage.seed);
-      if (s.equippedStone?.seed === stoneToSalvage.seed) {
-        s.equippedStone = s.stones.length > 0 ? s.stones[0] : null;
-      }
-    }));
-    setCurrentStoneDetails(currentSaveData.equippedStone);
+    updateCurrency(salvageValue);
+    removeStoneFromInventory(stoneToSalvage.seed); // This will also handle unequipping if needed
     
-    saveData();
-    logMessage(`Salvaged stone ${stoneToSalvage.seed} for ${salvageValue}. New equipped: ${currentSaveData.equippedStone?.seed || 'none'}`);
-    showMessage(`Salvaged stone for ${salvageValue} currency. Current: $${currentSaveData.currency}.`, 4000, 'success');
+    await saveGame();
+    // equippedStoneDetails() will update reactively after removeStoneFromInventory action.
+    logMessage(`Salvaged stone ${stoneToSalvage.seed} for ${salvageValue}.`);
+    showMessage(`Salvaged stone for ${salvageValue} currency.`, 4000, 'success');
   };
 
   const buttonStyle = { margin: '5px', padding: '10px', "min-width": '150px' };
@@ -161,13 +142,13 @@ const MainMenu: Component<MainMenuProps> = (props) => {
   return (
     <div>
       <h3>Main Menu</h3>
-      <button style={buttonStyle} onClick={handleCrackOpen} disabled={!currentStoneDetails()}>
+      <button style={buttonStyle} onClick={handleCrackOpen} disabled={!equippedStoneDetails()}>
         Crack Open Stone
       </button>
-      <button style={buttonStyle} onClick={handleFight} disabled={!currentStoneDetails()}>
+      <button style={buttonStyle} onClick={handleFight} disabled={!equippedStoneDetails() || !currentOpponentStore()}>
         Fight Opponent
       </button>
-      <button style={buttonStyle} onClick={handleSalvage} disabled={!currentStoneDetails()}>
+      <button style={buttonStyle} onClick={handleSalvage} disabled={!equippedStoneDetails()}>
         Salvage Stone
       </button>
       <button style={buttonStyle} onClick={props.toggleInventory}>

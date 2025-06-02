@@ -1,5 +1,5 @@
-import { Component, Show, createSignal, createEffect, onMount } from 'solid-js';
-import { currentSaveData, loadData, generateOpponentList, initializeGamePrng } from './store'; // Removed gamePrngInstance
+import { Component, Show, createSignal, onMount } from 'solid-js';
+import { gameState, loadGame } from './store'; // Import new reactive state and actions
 import StartMenu from './components/StartMenu';
 import ConsoleLog from './components/ConsoleLog';
 import MessageLine from './components/MessageLine';
@@ -10,25 +10,9 @@ import InventoryMenu from './components/InventoryMenu'; // Will be created later
 // Styles will be added later if needed, e.g., import './App.css';
 
 const MainGameArea: Component<{ toggleInventory: () => void }> = (props) => {
-  // This effect runs when currentSaveData.gameSeed changes and is not null.
-  // It's a good place to initialize things that depend on the gameSeed.
-  createEffect(() => {
-    if (currentSaveData.gameSeed !== null && currentSaveData.gameSeed !== undefined) {
-      // Check if PRNG is initialized, if not (e.g. after direct load into game), initialize it.
-      // store.ts's loadData also tries to init PRNG and opponent list. This is a fallback.
-      // The store's loadData should handle this.
-      // if (currentSaveData.gameSeed && !getGamePrng()) { // getGamePrng would throw if not init
-      //  initializeGamePrng(currentSaveData.gameSeed);
-      //  console.log("App.tsx: Initialized gamePrng because it wasn't set.");
-      // }
-      // Generate opponent queue if it's empty (e.g., on first load or if not persisted)
-      // store.ts's loadData handles this as well.
-      // if (opponentQueue.length === 0) {
-      //  generateOpponentList();
-      //  logMessage("Initial opponent list generated from App.tsx.");
-      // }
-    }
-  });
+  // No specific createEffect needed here for gameSeed changes now,
+  // as GameStateManager handles opponent queue generation upon load/reset.
+  // UI components will react directly to gameState changes.
 
   return (
     <div style={{ display: 'flex', "flex-wrap": "wrap", gap: '10px' }}>
@@ -49,8 +33,9 @@ const App: Component = () => {
   const [showInventory, setShowInventory] = createSignal(false);
   const toggleInventory = () => setShowInventory(!showInventory());
 
-  // loadData is called when store.ts is imported.
-  // generateOpponentList is called by loadData if gameSeed exists and queue is empty.
+  onMount(async () => {
+    await loadGame(); // Load initial game state using the new action
+  });
 
   return (
     <div id="app-container" style={{"max-width":"1200px", margin: "0 auto", padding: "10px", "font-family": "Arial, sans-serif" }}>
@@ -59,7 +44,7 @@ const App: Component = () => {
       </header>
       <main>
         <Show
-          when={currentSaveData.gameSeed !== null && currentSaveData.gameSeed !== undefined}
+          when={gameState.gameSeed !== null && gameState.gameSeed !== undefined}
           fallback={<StartMenu />}
         >
           <Show when={!showInventory()} fallback={<InventoryMenu toggleInventory={toggleInventory} />}>

@@ -27,10 +27,10 @@ describe('ConsoleLog Component', () => {
     render(() => <ConsoleLog />);
     expect(screen.queryByText(/Initial Test/i)).not.toBeInTheDocument();
 
-    setConsoleLogMessages(prev => [...prev, '[10:00:02] Initial Test']);
+    setConsoleLogMessages((prev: string[]) => [...prev, '[10:00:02] Initial Test']);
     expect(screen.getByText('[10:00:02] Initial Test')).toBeInTheDocument();
 
-    setConsoleLogMessages(prev => [...prev, '[10:00:03] Subsequent Test']);
+    setConsoleLogMessages((prev: string[]) => [...prev, '[10:00:03] Subsequent Test']);
     expect(screen.getByText('[10:00:03] Subsequent Test')).toBeInTheDocument();
   });
 

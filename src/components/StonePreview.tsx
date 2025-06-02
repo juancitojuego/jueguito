@@ -1,15 +1,16 @@
 import { Component, Show, JSX } from 'solid-js';
-import { currentStoneDetails } from '../store'; 
-import { StoneQualities } from '../stone';      // Ensuring StoneQualities is from ../stone
-import { renderStoneToSVG } from '../render'; // Ensuring import is from '../render'
+import { equippedStoneDetails } from '../store'; // Changed to equippedStoneDetails
+import { StoneQualities } from '../stone';
+import { renderStoneToSVG } from '../render';
 
 interface StonePreviewProps {
-  stone?: StoneQualities | null; 
+  stone?: StoneQualities | null;
   showTitle?: boolean;
 }
 
 const StonePreview: Component<StonePreviewProps> = (props) => {
-  const stoneAccessor = () => props.stone !== undefined ? props.stone : currentStoneDetails();
+  // If a stone is passed as a prop, use it; otherwise, use the globally equipped stone.
+  const stoneToDisplay = () => props.stone !== undefined ? props.stone : equippedStoneDetails();
   const shouldShowTitle = () => props.showTitle === undefined ? true : props.showTitle;
 
   const previewContainerStyle: JSX.CSSProperties = {
@@ -37,13 +38,16 @@ const StonePreview: Component<StonePreviewProps> = (props) => {
       </Show>
       <div style={previewContainerStyle}>
         <Show
-          when={stoneAccessor()}
+          when={stoneToDisplay()} // Use the new stoneToDisplay accessor
           fallback={<p>No stone selected to preview.</p>}
         >
-          {(s) => { // s is an accessor
-            const stoneObj = s() as StoneQualities | null; // Explicitly get the object & cast
-            if (!stoneObj) return null; 
-            // Now use stoneObj which TypeScript should recognize as StoneQualities
+          {(stone) => { // stone is now the direct StoneQualities object (or null, handled by Show)
+            // No need to call stone() if Show unwraps it.
+            // If props.stone can be an accessor, then stone() would be needed.
+            // Assuming props.stone is a direct object or null/undefined.
+            // And equippedStoneDetails is also direct object or null.
+            // Solid's <Show> provides the unwrapped value.
+            if (!stone) return null; 
             return (
             <>
               <div style={svgWrapperStyle}>

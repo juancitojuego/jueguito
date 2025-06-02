@@ -1,17 +1,5 @@
 // src/stone.ts
-
-// --- Interfaces and Types ---
-export interface StoneQualities {
-  seed: number; // Keep the seed with its qualities
-  color: string;
-  rarity: number; // 0-100
-  weight: number; // 1-100
-  shape: string;
-  hardness: number; // 0.00-1.00
-  magic: number;
-  createdAt: number;
-  name?: string; // Optional user-defined name
-}
+import type { StoneQualities } from './interfaces/stone';
 
 // --- Constants ---
 export const COLORS: string[] = ['Red', 'Blue', 'Green', 'Yellow', 'Magenta', 'Cyan', 'White', 'Black'];

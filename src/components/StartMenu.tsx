@@ -1,6 +1,8 @@
 import { Component, createSignal } from 'solid-js';
-import { setCurrentSaveData, saveData, initializeGamePrng, getGamePrng, getDefaultSaveData } from '../store'; // Added getGamePrng
-import { createStone, generateNewStoneSeed, mulberry32 } from '../stone';
+import { resetGameDefaults } from '../store'; // Import new action
+// mulberry32 and generateNewStoneSeed are for client-side seed generation if needed
+// but GameStateManager will handle actual game setup.
+import { mulberry32, generateNewStoneSeed } from '../stone'; 
 import { logMessage, showMessage } from '../utils';
 
 const StartMenu: Component = () => {
@@ -10,56 +12,40 @@ const StartMenu: Component = () => {
   const handleStartGame = () => {
     const name = playerNameInput().trim() || "Player";
     let seedStr = seedInput().trim();
-    let gameSeed: number;
+    let resolvedSeed: number;
 
     if (seedStr === '') {
-      // Use mulberry32 for initial seed generation if none provided, similar to original
+      // Client-side generation of a random seed if none provided
+      // mulberry32 is a simple PRNG, generateNewStoneSeed makes it an int
       const tempRng = mulberry32(Date.now() + Math.random() * 10000);
-      gameSeed = generateNewStoneSeed(tempRng) >>> 0; // Ensure positive integer
-      showMessage(`No seed entered. Using random seed: ${gameSeed}`, 4000, 'info');
+      resolvedSeed = generateNewStoneSeed(tempRng) >>> 0;
+      showMessage(`No seed entered. Using random seed: ${resolvedSeed}`, 4000, 'info');
     } else {
       const parsedSeed = parseInt(seedStr, 10);
       if (isNaN(parsedSeed)) {
-        // If not a number, generate a seed from the string characters like original
         let stringHash = 0;
         for (let i = 0; i < seedStr.length; i++) {
           stringHash = (stringHash << 5) - stringHash + seedStr.charCodeAt(i);
-          stringHash |= 0; // Convert to 32bit integer
+          stringHash |= 0; 
         }
-        const tempRng = mulberry32(stringHash + Date.now()); // Add Date.now() for more variability
-        gameSeed = generateNewStoneSeed(tempRng) >>> 0;
-        showMessage(`Invalid number for seed. Generated one based on text: ${gameSeed}`, 4000, 'info');
+        const tempRng = mulberry32(stringHash + Date.now());
+        resolvedSeed = generateNewStoneSeed(tempRng) >>> 0;
+        showMessage(`Invalid number for seed. Generated one based on text: ${resolvedSeed}`, 4000, 'info');
       } else {
-        gameSeed = parsedSeed >>> 0; // Ensure positive integer
+        resolvedSeed = parsedSeed >>> 0;
       }
     }
 
-    logMessage(`Starting new game. Player: "${name}", Resolved Game Seed: ${gameSeed}`);
-
-    initializeGamePrng(gameSeed); // Initialize the global PRNG
-
-    const firstStoneSeed = generateNewStoneSeed(getGamePrng()); // Use the now initialized global PRNG
-    const firstStone = createStone(firstStoneSeed);
-    logMessage(`Generated first stone (Seed: ${firstStone.seed}) for player "${name}".`);
-
-    setCurrentSaveData({
-      ...getDefaultSaveData(), // Start with defaults
-      playerName: name,
-      gameSeed: gameSeed,
-      stones: [firstStone],
-      equippedStone: firstStone,
-      // salt can remain default or be customized if needed
-    });
-
-    try {
-      saveData();
-      logMessage('Initial game data saved.');
-      showMessage(`Game started for ${name}! Your first stone is ready.`, 5000, 'success');
-    } catch (e: any) {
-      logMessage(`Error saving initial game data: ${e.message}`);
-      showMessage(`CRITICAL SAVE FAILED: ${e.message}. Progress may not be saved.`, 0, 'error'); // 0 duration = stays until next message
-    }
-    // The App.tsx will react to gameSeed changing and switch views.
+    logMessage(`Requesting new game. Player: "${name}", Resolved Game Seed: ${resolvedSeed}`);
+    
+    // Call the action from the refactored store, which calls GameStateManager
+    resetGameDefaults({ newGameSeed: resolvedSeed, playerName: name });
+    
+    // GameStateManager will handle initializing PRNG, creating first stone, saving, etc.
+    // It will also notify listeners, causing the gameState in store.ts to update.
+    // App.tsx will react to gameState.gameSeed changing and switch views.
+    // No direct saveData() or setCurrentSaveData() calls here anymore.
+    showMessage(`New game started for ${name} with seed ${resolvedSeed}.`, 5000, 'success');
   };
 
   return (

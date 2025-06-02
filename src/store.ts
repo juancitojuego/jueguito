@@ -1,210 +1,89 @@
-import { createSignal, Accessor, Setter } from 'solid-js';
-import { createStore, SetStoreFunction, Store, produce } from 'solid-js/store';
-import seedrandom from 'seedrandom';
-import { StoneQualities, createStone, generateNewStoneSeed } from './stone'; // Assuming stone.ts is in the same dir or path is adjusted
+// src/store.ts
+import { createStore, reconcile } from 'solid-js/store';
+import { createMemo } from 'solid-js';
+import { gameStateManagerInstance } from '../services/serviceInstances';
+import type { GameState, StoneQualities } from '../interfaces'; // Assuming barrel file for interfaces
 
-// --- Type Definitions ---
-export interface Message {
-  text: string;
-  type: 'info' | 'error' | 'success';
-  duration?: number;
-}
+// --- UI Specific State (Kept from original store or utils.ts) ---
+// Assuming logMessage and showMessage (and their state signals consoleLogMessages, currentMessage)
+// are now primarily managed and exported from utils.ts.
+// If they need to be re-exported by this store, import them from utils.
+export { consoleLogMessages, currentMessage, setConsoleLogMessages, setCurrentMessage } from '../utils'; // Example re-export
 
-// Opponent interface is already here
-export interface Opponent {
-  id: string; // Could be a unique seed or generated ID
-  name: string;
-  stones: StoneQualities[]; // Opponents have one or more stones
-  dialogue?: string;
-}
+// --- Game State Management via GameStateManager ---
 
-// SaveData interface is already here
-export interface SaveData {
-  playerName: string;
-  stones: StoneQualities[];
-  equippedStone: StoneQualities | null;
-  wins: number;
-  losses: number;
-  currency: number;
-  gameSeed: number | null;
-  opponents_index: number;
-  salt: string;
-  gameVersion: string;
-}
+// Create a SolidJS store that mirrors the GameStateManager's state
+const [gameState, setGameState] = createStore<GameState>(gameStateManagerInstance.getCurrentState());
 
-// --- Default State ---
-export function getDefaultSaveData(): SaveData {
-  return {
-    playerName: '',
-    stones: [],
-    equippedStone: null,
-    wins: 0,
-    losses: 0,
-    currency: 0,
-    gameSeed: null,
-    opponents_index: 0,
-    salt: 'StoneCrafterSaltValueV1.SolidJS',
-    gameVersion: '1.0.0',
-  };
-}
+// Subscribe to GameStateManager updates and reconcile the local store
+gameStateManagerInstance.subscribe((newState) => {
+  setGameState(reconcile(newState));
+});
 
-// --- SolidJS Reactive State ---
-const [currentSaveData, setCurrentSaveData] = createStore<SaveData>(getDefaultSaveData());
-const [currentStoneDetails, setCurrentStoneDetails] = createSignal<StoneQualities | null>(
-  currentSaveData.equippedStone
-);
-const [opponentQueue, setOpponentQueue] = createStore<Opponent[]>([]);
-const [consoleLogMessages, setConsoleLogMessages] = createSignal<string[]>([]);
-const [currentMessage, setCurrentMessage] = createSignal<Message | null>(null);
+// Export the reactive gameState
+export { gameState };
 
-// --- Game PRNG ---
-let gamePrngInstance: seedrandom.PRNG | null = null;
+// --- Derived Memos for UI Convenience ---
+export const equippedStoneDetails = createMemo(() => gameStateManagerInstance.getEquippedStoneDetails());
+export const currentOpponentStore = createMemo(() => gameStateManagerInstance.getCurrentOpponent()); // Renamed to avoid conflict if 'currentOpponent' is a common var name
 
-export function initializeGamePrng(seed: string | number): void {
-  gamePrngInstance = seedrandom(seed.toString());
-  console.log(`Game PRNG initialized with seed: ${seed}`); // Use console.log to avoid circular dependency with utils.ts
-}
+// --- Actions that call GameStateManager methods (re-exporting functionality) ---
 
-export function getGamePrng(): seedrandom.PRNG {
-  if (!gamePrngInstance) {
-    console.warn("Warning: Game PRNG accessed before initialization. Initializing with random seed (Date.now()).");
-    initializeGamePrng(Date.now().toString());
-  }
-  return gamePrngInstance!;
-}
-
-// --- Game Logic Functions adapted for SolidJS Store ---
-
-/**
- * Adds a stone to the player's inventory and sorts it.
- * @param stone The StoneQualities object to add.
- */
-export function addStoneToInventory(stone: StoneQualities): void {
-  setCurrentSaveData(
-    produce(s => {
-      s.stones.push(stone);
-      s.stones.sort((a, b) => a.createdAt - b.createdAt); // Sort by createdAt, oldest first
-    })
-  );
-  // Caller should handle UI logging (e.g., logMessage(`Added stone ${stone.seed} to inventory.`))
-  // Caller should handle saving data if needed (saveData())
-}
-
-/**
- * Generates a new queue of opponents.
- * @param count Number of opponents to generate.
- * @param prng The PRNG instance to use (should be getGamePrng()).
- */
-export function generateOpponentList(count: number = 100): void {
-  console.log(`Generating new opponent list with ${count} opponents.`); // store-internal log
-  const newOpponents: Opponent[] = [];
-  const prng = getGamePrng(); // Ensure PRNG is available
-  for (let i = 0; i < count; i++) {
-    const opponentStoneSeed = generateNewStoneSeed(prng);
-    const opponentStone = createStone(opponentStoneSeed);
-    // For simplicity, opponent name can be derived or randomized
-    const opponentName = `Opponent #${i + 1} (Stone: ${opponentStone.seed.toString().slice(-4)})`;
-    newOpponents.push({
-      id: opponentStone.seed.toString(), // Use stone seed as ID for simplicity
-      name: opponentName,
-      stones: [opponentStone], // For now, opponents have one stone
-    });
-  }
-  setOpponentQueue(newOpponents);
-  setCurrentSaveData('opponents_index', 0); // Reset index when new queue is generated
-  console.log(`Generated ${newOpponents.length} new opponents for the queue.`);
-  // Caller should handle UI logging and saving data
-}
-
-/**
- * Gets the current opponent from the queue.
- * Regenerates queue if index is out of bounds.
- * @returns The current Opponent object or null if queue is empty.
- */
-export function getCurrentOpponent(): Opponent | null {
-  if (currentSaveData.opponents_index >= opponentQueue.length && opponentQueue.length > 0) {
-    console.log( // store-internal log
-      `Opponent index ${currentSaveData.opponents_index} is out of bounds. Regenerating opponent queue.`
-    );
-    generateOpponentList(); // Regenerate with default count
-    // generateOpponentList already resets the index and logs
-    // Caller should handle saving data
-  }
-
-  if (opponentQueue.length > 0 && currentSaveData.opponents_index < opponentQueue.length) {
-    return opponentQueue[currentSaveData.opponents_index];
-  }
-
-  // If queue is empty even after potential regeneration or initial call
-  if (opponentQueue.length === 0) {
-     console.log("Opponent queue is empty. Attempting to generate new one.");
-     generateOpponentList();
-     if (opponentQueue.length > 0 && currentSaveData.opponents_index < opponentQueue.length) {
-        return opponentQueue[currentSaveData.opponents_index];
-     }
-  }
-  console.log('Opponent queue is empty or index is out of bounds, and no regeneration occurred or was effective.');
-  return null;
-}
-
-
-// --- Persistence Functions ---
-const LOCAL_STORAGE_KEY = 'stoneCrafterSave.solidJs';
-
-export const saveData = () => {
-  try {
-    const dataString = JSON.stringify(currentSaveData);
-    localStorage.setItem(LOCAL_STORAGE_KEY, dataString);
-    // console.log('Game data saved.'); // Caller can use logMessage from utils for UI feedback
-  } catch (error) {
-    console.error('Failed to save game data:', error);
-    // Avoid direct UI update from here to prevent circular deps
-    // Caller should use showMessage or logMessage
-  }
+export const loadGame = async (options?: { newGameSeed?: number; playerName?: string }) => {
+  await gameStateManagerInstance.loadGame(options);
+  // The store automatically updates via the subscription, no need to manually setGameState here.
 };
 
-export const loadData = () => {
-  try {
-    const savedGameString = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (savedGameString) {
-      const parsedData = JSON.parse(savedGameString) as Partial<SaveData>;
-      const defaults = getDefaultSaveData();
-      const validatedData: SaveData = { ...defaults, ...parsedData,
-        stones: Array.isArray(parsedData.stones) ? parsedData.stones.map(s => ({...s})) : defaults.stones,
-        equippedStone: parsedData.equippedStone ? {...parsedData.equippedStone} : defaults.equippedStone,
-      };
-      setCurrentSaveData(validatedData);
-      setCurrentStoneDetails(validatedData.equippedStone);
-      // Initialize opponent queue if game is loaded and queue is empty
-      if (validatedData.gameSeed !== null && opponentQueue.length === 0) {
-        // Need to ensure PRNG is initialized before generating opponents
-        if (gamePrngInstance === null) initializeGamePrng(validatedData.gameSeed);
-        generateOpponentList();
-      }
-    } else {
-      setCurrentSaveData(getDefaultSaveData());
-      setCurrentStoneDetails(getDefaultSaveData().equippedStone);
-    }
-  } catch (error) {
-    console.error('Failed to load game data:', error);
-    setCurrentSaveData(getDefaultSaveData());
-    setCurrentStoneDetails(getDefaultSaveData().equippedStone);
-  }
+export const saveGame = async () => {
+  await gameStateManagerInstance.saveGame();
 };
 
-// --- Exports ---
-export {
-  currentSaveData,
-  setCurrentSaveData,
-  currentStoneDetails,
-  setCurrentStoneDetails,
-  opponentQueue,
-  // setOpponentQueue is not exported, managed by generateOpponentList
-  consoleLogMessages,
-  setConsoleLogMessages,
-  currentMessage,
-  setCurrentMessage,
+export const resetGameDefaults = (options: { newGameSeed: number; playerName: string }) => {
+  gameStateManagerInstance.resetGameDefaults(options);
+  // Store updates via subscription
 };
 
-// Initialize by loading data when the store is first imported
-loadData();
+export const setPlayerName = (name: string) => {
+  gameStateManagerInstance.setPlayerName(name);
+};
+
+export const updateCurrency = (amount: number) => {
+  gameStateManagerInstance.updateCurrency(amount);
+};
+
+export const addStoneToInventory = (stone: StoneQualities) => {
+  gameStateManagerInstance.addStoneToInventory(stone);
+};
+
+export const removeStoneFromInventory = (stoneId: number) => {
+  gameStateManagerInstance.removeStoneFromInventory(stoneId);
+};
+
+export const equipStone = (stoneId: number | null) => {
+  gameStateManagerInstance.equipStone(stoneId);
+};
+
+export const generateNewOpponentQueue = (count: number): StoneQualities[] => {
+  // This action directly returns the result, though the manager might also update its internal state
+  // which would then flow to the gameState store if opponentQueue was part of GameState.
+  // Based on IGameStateManager, this returns StoneQualities[], not directly part of main GameState.
+  // If UI needs this reactively, it might need its own signal updated by this call.
+  // For now, this is an action that can be called.
+  return gameStateManagerInstance.generateNewOpponentQueue(count);
+};
+
+export const advanceOpponent = () => {
+  gameStateManagerInstance.advanceOpponent();
+};
+
+// Old functions like getDefaultSaveData, initializeGamePrng, getGamePrng,
+// currentSaveData, setCurrentSaveData, currentStoneDetails, setCurrentStoneDetails,
+// opponentQueue store, setOpponentQueue, specific addStoneToInventory, generateOpponentList,
+// getCurrentOpponent (old version), saveData (old version), loadData (old version)
+// are removed as their responsibilities are now with GameStateManager and the new reactive gameState.
+// UI-specific message/log signals are kept (assumed to be from utils.ts).
+
+// Note: The initial loadGame call is expected to be done in App.tsx's onMount.
+// This store no longer self-initializes game data on import.
+// It sets up the reactive bridge to GameStateManager.
+// The actual initial state population is deferred to an explicit loadGame call.

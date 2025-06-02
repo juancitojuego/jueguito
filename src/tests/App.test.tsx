@@ -1,36 +1,64 @@
-import { render, screen, cleanup } from '@solidjs/testing-library';
+import { render, screen, cleanup, waitFor } from '@solidjs/testing-library';
 import App from '@src/App';
-import { currentSaveData, setCurrentSaveData, getDefaultSaveData } from '@src/store'; // To control game state for rendering
+import { GameState } from '@src/interfaces';
+
+// Declare mocks before jest.mock
+const mockLoadGame = jest.fn(() => Promise.resolve());
+let mockGameState: GameState; 
+
+// Helper to set the global mockGameState that the store mock will use
+const setMockGameState = (newState: Partial<GameState>) => {
+  mockGameState = {
+    gameSeed: null, 
+    playerStats: { name: 'Player' },
+    currency: 0,
+    stones: [],
+    equippedStoneId: null,
+    opponentsSeed: null,
+    opponents_index: 0,
+    ...newState, 
+  };
+};
+
+// Mock the refactored store
+jest.mock('@src/store', () => ({
+  gameState: new Proxy({}, { get: (target, prop) => mockGameState[prop as keyof GameState] }),
+  loadGame: mockLoadGame, 
+  consoleLogMessages: () => [], 
+  currentMessage: () => null,   
+}));
 
 describe('App Component', () => {
   beforeEach(() => {
-    // Reset to a known state before each test, e.g., no game loaded
-    setCurrentSaveData(getDefaultSaveData());
-    // Manually ensure localStorage is clear if App component interacts with it on mount beyond store
-    localStorage.clear(); 
+    jest.clearAllMocks();
+    // Set a default initial state for gameState (no game loaded)
+    setMockGameState({ gameSeed: null });
   });
 
-  afterEach(() => {
-    cleanup();
-  });
+  afterEach(cleanup);
 
-  test('should render StartMenu when no game seed is present', () => {
-    setCurrentSaveData(getDefaultSaveData()); // Ensure gameSeed is null
+  test('should call loadGame onMount and render StartMenu when gameSeed is null', async () => {
     render(() => <App />);
-    // Assuming StartMenu component contains text "New Player Setup"
+    await waitFor(() => expect(mockLoadGame).toHaveBeenCalledTimes(1));
+    // After loadGame (even if it does nothing in mock), if gameSeed is still null:
     expect(screen.getByText(/New Player Setup/i)).toBeInTheDocument();
   });
 
-  test('should render MainGameArea when a game seed is present', async () => {
-    // Set a gameSeed to simulate an active game
-    setCurrentSaveData({ ...getDefaultSaveData(), gameSeed: 12345, playerName: "TestPlayer" });
+  test('should render MainGameArea when gameSeed is present after loadGame', async () => {
+    // Simulate loadGame populating the gameSeed
+    mockLoadGame.mockImplementation(async () => {
+      setMockGameState({ 
+        gameSeed: 12345, 
+        playerStats: { name: "TestPlayer" },
+        // ... other necessary fields
+      });
+    });
     
     render(() => <App />);
-    // MainGameArea includes StoneInfo, which displays player name and currency.
-    // It also includes MainMenu, StonePreview.
-    // Check for text that would appear in MainGameArea.
-    // For example, StoneInfo displays player name.
-    expect(screen.getByText(/TestPlayer/i)).toBeInTheDocument(); // From StoneInfo via MainGameArea
-    expect(screen.getByText(/Main Menu/i)).toBeInTheDocument(); // From MainMenu heading
+    await waitFor(() => expect(mockLoadGame).toHaveBeenCalledTimes(1));
+    
+    // Now gameState.gameSeed should be 12345
+    expect(screen.getByText(/TestPlayer/i)).toBeInTheDocument(); 
+    expect(screen.getByText(/Main Menu/i)).toBeInTheDocument(); 
   });
 });
