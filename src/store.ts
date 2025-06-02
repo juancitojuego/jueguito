@@ -1,170 +1,210 @@
-// src/store.ts
+import { createSignal, Accessor, Setter } from 'solid-js';
+import { createStore, SetStoreFunction, Store, produce } from 'solid-js/store';
+import seedrandom from 'seedrandom';
+import { StoneQualities, createStone, generateNewStoneSeed } from './stone'; // Assuming stone.ts is in the same dir or path is adjusted
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { StoneQualities } from './stone'; // Import StoneQualities
+// --- Type Definitions ---
+export interface Message {
+  text: string;
+  type: 'info' | 'error' | 'success';
+  duration?: number;
+}
 
-// --- Interfaces ---
+// Opponent interface is already here
+export interface Opponent {
+  id: string; // Could be a unique seed or generated ID
+  name: string;
+  stones: StoneQualities[]; // Opponents have one or more stones
+  dialogue?: string;
+}
+
+// SaveData interface is already here
 export interface SaveData {
-  stones: StoneQualities[]; // Array of StoneQualities objects
+  playerName: string;
+  stones: StoneQualities[];
+  equippedStone: StoneQualities | null;
+  wins: number;
+  losses: number;
   currency: number;
-  currentStoneSeed: number | null; // Seed of the currently active stone, or null
   gameSeed: number | null;
   opponents_index: number;
   salt: string;
+  gameVersion: string;
 }
-
-// --- Constants ---
-const SAVE_FILE_NAME = '.stone-crafter.json';
-const SAVE_PATH = path.join(os.homedir(), SAVE_FILE_NAME);
 
 // --- Default State ---
 export function getDefaultSaveData(): SaveData {
   return {
+    playerName: '',
     stones: [],
+    equippedStone: null,
+    wins: 0,
+    losses: 0,
     currency: 0,
-    currentStoneSeed: null,
     gameSeed: null,
     opponents_index: 0,
-    salt: 'StoneArenaSaltValueV1',
+    salt: 'StoneCrafterSaltValueV1.SolidJS',
+    gameVersion: '1.0.0',
   };
 }
 
-// --- Load and Save Functions ---
+// --- SolidJS Reactive State ---
+const [currentSaveData, setCurrentSaveData] = createStore<SaveData>(getDefaultSaveData());
+const [currentStoneDetails, setCurrentStoneDetails] = createSignal<StoneQualities | null>(
+  currentSaveData.equippedStone
+);
+const [opponentQueue, setOpponentQueue] = createStore<Opponent[]>([]);
+const [consoleLogMessages, setConsoleLogMessages] = createSignal<string[]>([]);
+const [currentMessage, setCurrentMessage] = createSignal<Message | null>(null);
+
+// --- Game PRNG ---
+let gamePrngInstance: seedrandom.PRNG | null = null;
+
+export function initializeGamePrng(seed: string | number): void {
+  gamePrngInstance = seedrandom(seed.toString());
+  console.log(`Game PRNG initialized with seed: ${seed}`); // Use console.log to avoid circular dependency with utils.ts
+}
+
+export function getGamePrng(): seedrandom.PRNG {
+  if (!gamePrngInstance) {
+    console.warn("Warning: Game PRNG accessed before initialization. Initializing with random seed (Date.now()).");
+    initializeGamePrng(Date.now().toString());
+  }
+  return gamePrngInstance!;
+}
+
+// --- Game Logic Functions adapted for SolidJS Store ---
 
 /**
- * Loads game data from the save file.
- * If the file doesn't exist or is corrupted, returns default save data.
- * @returns The loaded (or default) SaveData.
+ * Adds a stone to the player's inventory and sorts it.
+ * @param stone The StoneQualities object to add.
  */
-export function loadData(): SaveData {
-  const defaults = getDefaultSaveData();
+export function addStoneToInventory(stone: StoneQualities): void {
+  setCurrentSaveData(
+    produce(s => {
+      s.stones.push(stone);
+      s.stones.sort((a, b) => a.createdAt - b.createdAt); // Sort by createdAt, oldest first
+    })
+  );
+  // Caller should handle UI logging (e.g., logMessage(`Added stone ${stone.seed} to inventory.`))
+  // Caller should handle saving data if needed (saveData())
+}
+
+/**
+ * Generates a new queue of opponents.
+ * @param count Number of opponents to generate.
+ * @param prng The PRNG instance to use (should be getGamePrng()).
+ */
+export function generateOpponentList(count: number = 100): void {
+  console.log(`Generating new opponent list with ${count} opponents.`); // store-internal log
+  const newOpponents: Opponent[] = [];
+  const prng = getGamePrng(); // Ensure PRNG is available
+  for (let i = 0; i < count; i++) {
+    const opponentStoneSeed = generateNewStoneSeed(prng);
+    const opponentStone = createStone(opponentStoneSeed);
+    // For simplicity, opponent name can be derived or randomized
+    const opponentName = `Opponent #${i + 1} (Stone: ${opponentStone.seed.toString().slice(-4)})`;
+    newOpponents.push({
+      id: opponentStone.seed.toString(), // Use stone seed as ID for simplicity
+      name: opponentName,
+      stones: [opponentStone], // For now, opponents have one stone
+    });
+  }
+  setOpponentQueue(newOpponents);
+  setCurrentSaveData('opponents_index', 0); // Reset index when new queue is generated
+  console.log(`Generated ${newOpponents.length} new opponents for the queue.`);
+  // Caller should handle UI logging and saving data
+}
+
+/**
+ * Gets the current opponent from the queue.
+ * Regenerates queue if index is out of bounds.
+ * @returns The current Opponent object or null if queue is empty.
+ */
+export function getCurrentOpponent(): Opponent | null {
+  if (currentSaveData.opponents_index >= opponentQueue.length && opponentQueue.length > 0) {
+    console.log( // store-internal log
+      `Opponent index ${currentSaveData.opponents_index} is out of bounds. Regenerating opponent queue.`
+    );
+    generateOpponentList(); // Regenerate with default count
+    // generateOpponentList already resets the index and logs
+    // Caller should handle saving data
+  }
+
+  if (opponentQueue.length > 0 && currentSaveData.opponents_index < opponentQueue.length) {
+    return opponentQueue[currentSaveData.opponents_index];
+  }
+
+  // If queue is empty even after potential regeneration or initial call
+  if (opponentQueue.length === 0) {
+     console.log("Opponent queue is empty. Attempting to generate new one.");
+     generateOpponentList();
+     if (opponentQueue.length > 0 && currentSaveData.opponents_index < opponentQueue.length) {
+        return opponentQueue[currentSaveData.opponents_index];
+     }
+  }
+  console.log('Opponent queue is empty or index is out of bounds, and no regeneration occurred or was effective.');
+  return null;
+}
+
+
+// --- Persistence Functions ---
+const LOCAL_STORAGE_KEY = 'stoneCrafterSave.solidJs';
+
+export const saveData = () => {
   try {
-    if (fs.existsSync(SAVE_PATH)) {
-      const fileContent = fs.readFileSync(SAVE_PATH, 'utf-8');
-      const parsedData = JSON.parse(fileContent) as Partial<SaveData>;
+    const dataString = JSON.stringify(currentSaveData);
+    localStorage.setItem(LOCAL_STORAGE_KEY, dataString);
+    // console.log('Game data saved.'); // Caller can use logMessage from utils for UI feedback
+  } catch (error) {
+    console.error('Failed to save game data:', error);
+    // Avoid direct UI update from here to prevent circular deps
+    // Caller should use showMessage or logMessage
+  }
+};
 
-      const loadedStones: StoneQualities[] = [];
-      if (Array.isArray(parsedData.stones)) {
-        for (const s of parsedData.stones) {
-          if (
-            s &&
-            typeof s === 'object' &&
-            typeof s.seed === 'number' &&
-            !isNaN(s.seed) &&
-            typeof s.createdAt === 'number' &&
-            !isNaN(s.createdAt) &&
-            typeof s.color === 'string' &&
-            typeof s.shape === 'string' &&
-            typeof s.rarity === 'number' &&
-            !isNaN(s.rarity) &&
-            typeof s.weight === 'number' &&
-            !isNaN(s.weight) &&
-            typeof s.hardness === 'number' &&
-            !isNaN(s.hardness) &&
-            typeof s.magic === 'number' &&
-            !isNaN(s.magic)
-          ) {
-            loadedStones.push(s as StoneQualities);
-          }
-        }
-      }
-
-      const currency =
-        typeof parsedData.currency === 'number' && !isNaN(parsedData.currency)
-          ? parsedData.currency
-          : defaults.currency;
-
-      const gameSeed =
-        (typeof parsedData.gameSeed === 'number' && !isNaN(parsedData.gameSeed)) || parsedData.gameSeed === null
-          ? parsedData.gameSeed
-          : defaults.gameSeed;
-
-      const opponents_index =
-        typeof parsedData.opponents_index === 'number' && !isNaN(parsedData.opponents_index)
-          ? parsedData.opponents_index
-          : defaults.opponents_index;
-
-      const salt = typeof parsedData.salt === 'string' ? parsedData.salt : defaults.salt;
-
-      let currentStoneSeed: number | null = null;
-      if (
-        (typeof parsedData.currentStoneSeed === 'number' && !isNaN(parsedData.currentStoneSeed)) ||
-        parsedData.currentStoneSeed === null
-      ) {
-        currentStoneSeed = parsedData.currentStoneSeed;
-      }
-
-      let validatedCurrentStoneSeed: number | null = null;
-      if (currentStoneSeed !== null && loadedStones.some((s) => s.seed === currentStoneSeed)) {
-        validatedCurrentStoneSeed = currentStoneSeed;
-      } else if (loadedStones.length > 0) {
-        validatedCurrentStoneSeed = loadedStones[0].seed;
-      }
-
-      loadedStones.sort((a, b) => a.createdAt - b.createdAt); // Sort by createdAt, oldest first
-
-      return {
-        stones: loadedStones,
-        currency,
-        currentStoneSeed: validatedCurrentStoneSeed,
-        gameSeed,
-        opponents_index,
-        salt,
+export const loadData = () => {
+  try {
+    const savedGameString = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedGameString) {
+      const parsedData = JSON.parse(savedGameString) as Partial<SaveData>;
+      const defaults = getDefaultSaveData();
+      const validatedData: SaveData = { ...defaults, ...parsedData,
+        stones: Array.isArray(parsedData.stones) ? parsedData.stones.map(s => ({...s})) : defaults.stones,
+        equippedStone: parsedData.equippedStone ? {...parsedData.equippedStone} : defaults.equippedStone,
       };
+      setCurrentSaveData(validatedData);
+      setCurrentStoneDetails(validatedData.equippedStone);
+      // Initialize opponent queue if game is loaded and queue is empty
+      if (validatedData.gameSeed !== null && opponentQueue.length === 0) {
+        // Need to ensure PRNG is initialized before generating opponents
+        if (gamePrngInstance === null) initializeGamePrng(validatedData.gameSeed);
+        generateOpponentList();
+      }
     } else {
-      return defaults;
+      setCurrentSaveData(getDefaultSaveData());
+      setCurrentStoneDetails(getDefaultSaveData().equippedStone);
     }
   } catch (error) {
-    return defaults;
+    console.error('Failed to load game data:', error);
+    setCurrentSaveData(getDefaultSaveData());
+    setCurrentStoneDetails(getDefaultSaveData().equippedStone);
   }
-}
+};
 
-/**
- * Saves the provided game data to the save file.
- * Performs basic validation on the data before saving.
- * Throws an error if saving to the file system fails, which should be handled by the caller.
- *
- * @param data The SaveData object to save.
- * @throws Error if file system operations fail during saving.
- */
-export function saveData(data: SaveData): void {
-  try {
-    const cleanData: SaveData = {
-      stones: data.stones.filter(
-        (
-          s // Basic validation for stone objects before saving
-        ) =>
-          s &&
-          typeof s === 'object' &&
-          typeof s.seed === 'number' &&
-          !isNaN(s.seed) &&
-          typeof s.createdAt === 'number' &&
-          !isNaN(s.createdAt)
-        // Add other essential field checks if necessary
-      ),
-      currency: typeof data.currency === 'number' && !isNaN(data.currency) ? data.currency : 0,
-      currentStoneSeed:
-        (typeof data.currentStoneSeed === 'number' && !isNaN(data.currentStoneSeed)) || data.currentStoneSeed === null
-          ? data.currentStoneSeed
-          : null,
-      gameSeed:
-        (typeof data.gameSeed === 'number' && !isNaN(data.gameSeed)) || data.gameSeed === null ? data.gameSeed : null,
-      opponents_index:
-        typeof data.opponents_index === 'number' && !isNaN(data.opponents_index) ? data.opponents_index : 0,
-      salt: typeof data.salt === 'string' ? data.salt : getDefaultSaveData().salt,
-    };
+// --- Exports ---
+export {
+  currentSaveData,
+  setCurrentSaveData,
+  currentStoneDetails,
+  setCurrentStoneDetails,
+  opponentQueue,
+  // setOpponentQueue is not exported, managed by generateOpponentList
+  consoleLogMessages,
+  setConsoleLogMessages,
+  currentMessage,
+  setCurrentMessage,
+};
 
-    const dataString = JSON.stringify(cleanData, null, 2);
-    fs.writeFileSync(SAVE_PATH, dataString, 'utf-8');
-  } catch (error) {
-    // console.error("Error saving game data:", error); // Original line
-    // Re-throw the error so the caller can handle it (e.g., for logging)
-    if (error instanceof Error) {
-      throw new Error(`Failed to save game data: ${error.message}`);
-    } else {
-      throw new Error(`Failed to save game data due to an unknown error.`);
-    }
-  }
-}
+// Initialize by loading data when the store is first imported
+loadData();

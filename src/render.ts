@@ -1,149 +1,180 @@
 // src/render.ts
 
-import chalk from 'chalk';
-import { StoneQualities, mulberry32 } from './stone'; // mulberry32 for deterministic glyph placement
-import { MASK_HEIGHT, MASK_WIDTH } from './shapeMasks'; // Assuming these are exported
+import { StoneQualities, mulberry32 } from './stone';
+import { MASK_HEIGHT, MASK_WIDTH, generateShapeMask } from './shapeMasks';
+import type { JSX } from 'solid-js'; // For SolidJS JSX types
 
-// Keep this function if it's helpful for color manipulation
-interface HSLColor {
-  h: number;
-  s: number;
-  l: number;
-}
-function getBaseHslForColor(colorName: string): HSLColor {
+// --- Color Mapping for SVG ---
+// Maps stone color names to SVG compatible color values (hex, named colors)
+export function getSvgColor(colorName: string | undefined): string {
+  if (!colorName) return '#888888'; // Default to grey if no color
   switch (colorName.toLowerCase()) {
-    case 'red':
-      return { h: 0, s: 100, l: 50 };
-    case 'yellow':
-      return { h: 60, s: 100, l: 50 };
-    case 'green':
-      return { h: 120, s: 100, l: 50 };
-    case 'cyan':
-      return { h: 180, s: 100, l: 50 };
-    case 'blue':
-      return { h: 240, s: 100, l: 50 };
-    case 'magenta':
-      return { h: 300, s: 100, l: 50 };
-    case 'white':
-      return { h: 0, s: 0, l: 90 }; // Brighter white
-    case 'black':
-      return { h: 0, s: 0, l: 20 }; // Darker black for contrast
-    default:
-      return { h: 0, s: 0, l: 50 }; // Default grey
+    case 'red': return '#FF0000';
+    case 'yellow': return '#FFFF00';
+    case 'green': return '#008000'; // DarkGreen for better visibility than Lime
+    case 'cyan': return '#00FFFF';
+    case 'blue': return '#0000FF';
+    case 'magenta': return '#FF00FF';
+    case 'white': return '#FFFFFF';
+    case 'black': return '#1A1A1A'; // Slightly off-black
+    default: return '#888888'; // Default grey for unknown colors
   }
 }
 
-const DENSITY_CHARS = ['░', '▒', '▓', '█']; // Lightest to densest
-const MAGIC_GLYPHS = ['+', '*', '✦']; // Least to most potent
+// --- SVG Stone Renderer ---
 
-/**
- * Selects a character based on stone weight and hardness.
- * @param weight Stone weight (1-100).
- * @param hardness Stone hardness (0.00-1.00).
- * @returns A character representing the stone's density.
- */
-function selectDensityCharacter(weight: number, hardness: number): string {
-  let index = 0;
-  if (weight < 25) index = 0;
-  else if (weight < 50) index = 1;
-  else if (weight < 75) index = 2;
-  else index = 3;
+// Constants for SVG rendering
+const SVG_VIEWBOX_WIDTH = MASK_WIDTH; // Using mask dimensions for viewBox
+const SVG_VIEWBOX_HEIGHT = MASK_HEIGHT;
+const CELL_SIZE = 1; // Each cell in the mask becomes a 1x1 unit in SVG
 
-  // Hardness can slightly increase density impression
-  if (hardness > 0.66 && index < DENSITY_CHARS.length - 1) {
-    index++;
-  } else if (hardness < 0.33 && index > 0) {
-    // Softer stones might appear less dense, but let's not make them too light based on hardness alone.
-    // index--; // Optional: uncomment to make soft stones lighter
-  }
-  return DENSITY_CHARS[index];
+// Magic Glyphs as simple SVG paths or symbols
+const SVG_MAGIC_GLYPHS = {
+  plus: (x: number, y: number, size: number, color: string) => (
+    <path d={`M${x-size/2},${y} H${x+size/2} M${x},${y-size/2} V${y+size/2}`} stroke={color} stroke-width={size * 0.2} />
+  ),
+  star: (x: number, y: number, size: number, color: string) => (
+    // Simple 4-point star
+    <path d={`M${x},${y-size/2} L${x+size/4},${y-size/4} L${x+size/2},${y} L${x+size/4},${y+size/4} L${x},${y+size/2} L${x-size/4},${y+size/4} L${x-size/2},${y} L${x-size/4},${y-size/4} Z`} fill={color} />
+  ),
+  diamond: (x: number, y: number, size: number, color: string) => (
+    <rect x={x - size / 2} y={y - size / 2} width={size} height={size} fill={color} transform={`rotate(45 ${x} ${y})`} />
+  ),
+};
+
+function getMagicGlyphDetails(magic: number): { type: keyof typeof SVG_MAGIC_GLYPHS; count: number } {
+  if (magic < 30) return { type: 'plus', count: magic > 15 ? Math.floor(magic / 10) : 0 };
+  if (magic < 60) return { type: 'star', count: Math.floor(magic / 15) };
+  if (magic < 90) return { type: 'diamond', count: Math.floor(magic / 20) };
+  return { type: 'diamond', count: Math.floor(magic / 15) };
 }
 
-/**
- * Determines which magic glyph to use and how many.
- * @param magic Stone magic score (0-100).
- * @returns An object with the glyph and count.
- */
-function getMagicGlyphDetails(magic: number): { glyph: string; count: number } {
-  if (magic < 30) return { glyph: MAGIC_GLYPHS[0], count: magic > 15 ? Math.floor(magic / 10) : 0 }; // 0-2 '+'
-  if (magic < 60) return { glyph: MAGIC_GLYPHS[1], count: Math.floor(magic / 15) }; // 2-3 '*'
-  if (magic < 90) return { glyph: MAGIC_GLYPHS[2], count: Math.floor(magic / 20) }; // 3-4 '✦'
-  return { glyph: MAGIC_GLYPHS[2], count: Math.floor(magic / 15) }; // 5-6 '✦' for very high magic
-}
+export function renderStoneToSVG(stone: StoneQualities): JSX.Element {
+  const { weight, hardness, magic, color, seed, shape } = stone;
+  const mask = generateShapeMask(shape, MASK_WIDTH, MASK_HEIGHT);
+  const baseSvgColor = getSvgColor(color);
 
-/**
- * Renders a stone to a 60x60 string grid.
- * @param mask The 60x60 boolean shape mask.
- * @param qualities The stone's qualities.
- * @returns A 60x60 string grid representing the rendered stone.
- */
-export function renderStone(mask: boolean[][], qualities: StoneQualities): string[][] {
-  const { weight, hardness, magic, color, seed } = qualities;
-  const outputGrid: string[][] = Array(MASK_HEIGHT)
-    .fill(null)
-    .map(() => Array(MASK_WIDTH).fill(' '));
-  const baseHsl = getBaseHslForColor(color);
+  const elements: JSX.Element[] = [];
+  const glyphPrng = mulberry32(seed); // For deterministic glyph placement
 
-  const densityChar = selectDensityCharacter(weight, hardness);
-  const { glyph: magicGlyph, count: glyphCount } = getMagicGlyphDetails(magic);
-
-  // Create a PRNG instance for deterministic glyph placement based on the stone's unique seed
-  const glyphPrng = mulberry32(seed);
-
-  // Collect all possible glyph positions (where mask is true)
+  // Collect all possible glyph positions
   const possibleGlyphPositions: { y: number; x: number }[] = [];
-  for (let y = 0; y < MASK_HEIGHT; y++) {
-    for (let x = 0; x < MASK_WIDTH; x++) {
-      if (mask[y][x]) {
-        possibleGlyphPositions.push({ y, x });
+  for (let r = 0; r < MASK_HEIGHT; r++) {
+    for (let c = 0; c < MASK_WIDTH; c++) {
+      if (mask[r][c]) {
+        possibleGlyphPositions.push({ y: r, x: c });
       }
     }
   }
 
-  // Shuffle positions for random distribution if there are positions and glyphs to place
-  if (possibleGlyphPositions.length > 0 && glyphCount > 0) {
+  // Shuffle positions for random distribution
+  if (possibleGlyphPositions.length > 0) {
     for (let i = possibleGlyphPositions.length - 1; i > 0; i--) {
       const j = Math.floor(glyphPrng() * (i + 1));
       [possibleGlyphPositions[i], possibleGlyphPositions[j]] = [possibleGlyphPositions[j], possibleGlyphPositions[i]];
     }
   }
 
-  const glyphPositions = new Set<string>(); // "y,x"
+  const { type: magicGlyphType, count: glyphCount } = getMagicGlyphDetails(magic);
+  const glyphPositions = new Set<string>();
   for (let i = 0; i < Math.min(glyphCount, possibleGlyphPositions.length); i++) {
     glyphPositions.add(`${possibleGlyphPositions[i].y},${possibleGlyphPositions[i].x}`);
   }
 
-  for (let y = 0; y < MASK_HEIGHT; y++) {
-    for (let x = 0; x < MASK_WIDTH; x++) {
-      if (!mask[y][x]) {
-        outputGrid[y][x] = ' ';
-        continue;
-      }
+  for (let r = 0; r < MASK_HEIGHT; r++) {
+    for (let c = 0; c < MASK_WIDTH; c++) {
+      if (mask[r][c]) {
+        // Base cell color and properties
+        let cellFill = baseSvgColor;
+        let cellOpacity = 0.6 + (weight / 100) * 0.4; // Weight influences base opacity (0.6 to 1.0)
+        if (hardness > 0.75) cellOpacity = Math.min(1, cellOpacity + 0.1);
+        if (hardness < 0.25) cellOpacity = Math.max(0.4, cellOpacity - 0.1);
 
-      let charToRender = densityChar;
-      if (glyphPositions.has(`${y},${x}`)) {
-        charToRender = magicGlyph;
-      }
+        elements.push(
+          <rect
+            x={c * CELL_SIZE}
+            y={r * CELL_SIZE}
+            width={CELL_SIZE}
+            height={CELL_SIZE}
+            fill={cellFill}
+            opacity={cellOpacity}
+          />
+        );
 
-      // Adjust lightness based on a simple pattern or hardness, for example
-      // This is a placeholder for more sophisticated shading if needed.
-      // For now, main color comes from baseHsl.
-      const lOffset = x % 2 === y % 2 ? 5 : 0; // Subtle checkerboard pattern for texture
-      let finalL = baseHsl.l + lOffset;
-
-      // Glyphs could be brighter/different color
-      if (charToRender === magicGlyph) {
-        finalL = Math.min(100, baseHsl.l + 25); // Make glyphs pop a bit
-        outputGrid[y][x] = chalk.hsl(baseHsl.h, Math.max(30, baseHsl.s - 20), finalL).bold(charToRender);
-      } else {
-        outputGrid[y][x] = chalk.hsl(baseHsl.h, baseHsl.s, finalL)(charToRender);
+        // Add magic glyph if this position is chosen
+        if (glyphPositions.has(`${r},${c}`)) {
+          const glyphColor = kontrast.isLight(baseSvgColor) ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)';
+          const glyphElement = SVG_MAGIC_GLYPHS[magicGlyphType](
+            (c + CELL_SIZE / 2), // center of the cell
+            (r + CELL_SIZE / 2), // center of the cell
+            CELL_SIZE * 0.8,     // size of the glyph relative to cell
+            glyphColor
+          );
+          elements.push(glyphElement);
+        }
       }
     }
   }
-  return outputGrid;
+
+  // Add a subtle border to the whole stone based on rarity
+  let strokeColor = "none";
+  let strokeWidth = 0;
+  if (stone.rarity > 75) {
+    strokeColor = stone.rarity > 90 ? "gold" : "silver";
+    strokeWidth = 0.25 * CELL_SIZE; // Thicker border for very rare
+  }
+
+
+  return (
+    <svg
+      width="100%" // Make SVG responsive
+      height="100%"
+      viewBox={`0 0 ${SVG_VIEWBOX_WIDTH} ${SVG_VIEWBOX_HEIGHT}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ border: '1px solid #eee', "background-color": "#f0f0f0" }}
+    >
+      <g stroke={strokeColor} stroke-width={strokeWidth}>
+        {elements}
+      </g>
+      {/* You can add filters here for more effects, e.g. a slight blur or shine */}
+    </svg>
+  );
 }
 
-// The old renderStoneToAscii might be removed or updated to use renderStone.
-// For now, let's assume it will be replaced or removed in a later step if not needed.
-// Remove stripAnsi and the old SHAPES constant if no longer used.
-// The ART_HEIGHT and ART_WIDTH constants are also from the old renderer.
+/**
+ * Kontrast is a tiny utility library for color contrast checking.
+ * It's useful for determining if text (or glyphs) should be light or dark
+ * based on the background color.
+ * Source: https://github.com/matvp91/kontrast
+ */
+const kontrast = {
+  getLuminance: (hexColor: string) => {
+    const rgb = parseInt(hexColor.slice(1), 16);
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = (rgb >> 0) & 0xff;
+    const a = [r, g, b].map(v => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+  },
+  isLight: (hexColor: string) => kontrast.getLuminance(hexColor) > 0.5,
+};
+
+
+// The old text-based renderStone and related functions (selectDensityCharacter, getBaseHslForColor)
+// can be kept for reference or removed if no longer needed.
+// For now, they are effectively replaced by renderStoneToSVG and getSvgColor.
+// chalk dependency can be removed after this.
+
+// Old text based renderStone (can be removed)
+/*
+export function renderStone(mask: boolean[][], qualities: StoneQualities): string[][] {
+    // ... original implementation using chalk ...
+}
+*/
+// ... (other old functions like selectDensityCharacter, getBaseHslForColor, etc.)
+
+// Ensure MASK_WIDTH and MASK_HEIGHT are used consistently or passed as parameters if variable sizes are needed.
+// For SVG, fixed viewBox is fine, and outer width/height="100%" makes it scale.

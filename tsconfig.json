@@ -9,6 +9,8 @@
       "@src/*": ["src/*"]
     },
     "strict": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
