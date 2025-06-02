@@ -18,9 +18,13 @@ import '@testing-library/jest-dom'; // Alternative import for extend-expect
 
 // Mock import.meta.env for Jest environment
 // Vite uses import.meta.env.DEV, import.meta.env.PROD, etc.
-// @ts-ignore
-globalThis.import = globalThis.import || {};
-// @ts-ignore
-globalThis.import.meta = globalThis.import.meta || {};
-// @ts-ignore
-globalThis.import.meta.env = globalThis.import.meta.env || { DEV: true, PROD: false };
+Object.defineProperty(globalThis, 'import.meta', {
+  value: {
+    env: {
+      DEV: true, // Default to DEV mode for tests
+      PROD: false,
+      // Add any other Vite-specific env variables your code might access
+    },
+  },
+  writable: true, // Allows tests to modify if necessary, though usually not needed
+});

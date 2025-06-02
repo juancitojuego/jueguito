@@ -2,13 +2,13 @@ import { render, screen, cleanup } from '@solidjs/testing-library';
 import StonePreview from '@src/components/StonePreview';
 import { currentStoneDetails, setCurrentStoneDetails } from '@src/store';
 import { createStone, StoneQualities } from '@src/stone'; // Import StoneQualities here
-import { renderStoneToSVG } from '@src/render.tsx'; // Updated import path
+import { renderStoneToSVG } from '@src/render'; // Import without .tsx extension
 
 // Mock the actual SVG rendering function to simplify tests if needed,
 // or test its integration by checking for <svg> elements.
 // For this test, we'll check if renderStoneToSVG is incorporated.
-jest.mock('@src/render.tsx', () => { // Updated mock path
-  const originalRender = jest.requireActual('@src/render.tsx'); // Updated requireActual path
+jest.mock('@src/render', () => { // Mock path without .tsx extension
+  const originalRender = jest.requireActual('@src/render'); // requireActual without .tsx
   return {
     ...originalRender,
     renderStoneToSVG: jest.fn((stone: StoneQualities) => {

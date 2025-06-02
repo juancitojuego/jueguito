@@ -41,7 +41,9 @@ describe('InventoryMenu Component', () => {
     render(() => <InventoryMenu toggleInventory={mockToggleInventory} />);
     expect(screen.getByText(/Ruby/i)).toBeInTheDocument();
     expect(screen.getByText(/Sapphire/i)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(stone3.seed.toString().substring(0,8), "i"))).toBeInTheDocument();
+    // Ensure the regex uniquely identifies the stone entry, e.g., by looking for more of its specific text
+    const stone3Pattern = new RegExp(`${stone3.seed.toString().substring(0, 8)}\\.\\.\\s*-\\s*${stone3.color}\\s*${stone3.shape}\\s*\\(R${stone3.rarity}\\)`, "i");
+    expect(screen.getByText(stone3Pattern)).toBeInTheDocument();
     expect(screen.getByText(`Your Stones (${currentSaveData.stones.length})`)).toBeInTheDocument();
   });
 
@@ -62,9 +64,10 @@ describe('InventoryMenu Component', () => {
     expect(screen.getByText(new RegExp(`Color: ${stone1.color}`, "i"))).toBeInTheDocument();
   });
 
-  test('"Set as Current" button should be disabled if no stone is highlighted', () => {
+  test('"Set as Current" button should not be present if no stone is highlighted', () => {
     render(() => <InventoryMenu toggleInventory={mockToggleInventory} />);
-    expect(screen.getByText('Set as Current')).toBeDisabled();
+    // The button is inside a <Show when={highlightedStone()} > block
+    expect(screen.queryByText('Set as Current')).toBeNull();
   });
 
   test('clicking "Set as Current" equips the highlighted stone and closes inventory', () => {

@@ -35,7 +35,7 @@ describe('MessageLine Component', () => {
     setCurrentMessage(testMessage);
     render(() => <MessageLine />);
     const messageDiv = screen.getByText('Info message');
-    expect(messageDiv).toHaveStyle('background-color: lightblue');
+    expect(messageDiv).toHaveStyle('background-color: rgb(173, 216, 230)'); // lightblue
   });
 
   test('should apply style based on message type (error)', () => {
@@ -43,7 +43,7 @@ describe('MessageLine Component', () => {
     setCurrentMessage(testMessage);
     render(() => <MessageLine />);
     const messageDiv = screen.getByText('Error message');
-    expect(messageDiv).toHaveStyle('background-color: lightcoral');
+    expect(messageDiv).toHaveStyle('background-color: rgb(240, 128, 128)'); // lightcoral
   });
 
   test('should apply style based on message type (success)', () => {
@@ -51,7 +51,7 @@ describe('MessageLine Component', () => {
     setCurrentMessage(testMessage);
     render(() => <MessageLine />);
     const messageDiv = screen.getByText('Success message');
-    expect(messageDiv).toHaveStyle('background-color: lightgreen');
+    expect(messageDiv).toHaveStyle('background-color: rgb(144, 238, 144)'); // lightgreen
   });
 
   test('should clear the message if showMessage utility handles timeout (conceptual)', () => {

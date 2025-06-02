@@ -15,7 +15,10 @@ if (!root) {
   );
 }
 
-if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
+// Guard import.meta.env for environments where it might not be defined (like Jest certain configs)
+const isDevEnvironment = typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' && import.meta.env.DEV;
+
+if (isDevEnvironment && !(root instanceof HTMLElement)) {
   // This specific check for HTMLElement might be redundant given the !root check,
   // but it's good practice for type safety in dev.
   throw new Error(

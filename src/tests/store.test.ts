@@ -10,7 +10,7 @@ import {
   generateOpponentList,
   getCurrentOpponent,
   opponentQueue,
-  setOpponentQueue, // For resetting queue state in tests
+  // setOpponentQueue, // Not exported, managed internally by generateOpponentList
   initializeGamePrng, // To initialize PRNG for opponent generation
   getGamePrng,
   currentStoneDetails, // For checking equipped stone details

@@ -14,23 +14,30 @@ jest.mock('@src/utils', () => ({
 // but are called by button handlers.
 import { StoneQualities } from '@src/stone'; // Import the actual type
 
+import { produce } from 'solid-js/store'; // Import produce
+
+// import { produce } from 'solid-js/store'; // Already imported at top level
+
+// import { produce } from 'solid-js/store'; // No longer needed at top level here
+
 jest.mock('@src/store', () => {
   const originalStore = jest.requireActual('@src/store');
-  // Define a simple mock for createStone within this scope for the opponent mock
+  const { produce: actualProduce } = jest.requireActual('solid-js/store'); // Get actual produce
+
   const mockCreateStoneForOpponent = (seed: number): StoneQualities => ({ 
     seed, name: `OpponentStone ${seed}`, color: 'Grey', shape: 'Shard', 
     rarity: 10, hardness: 0.1, magic: 5, weight: 10, createdAt: Date.now() 
   });
   return {
     ...originalStore,
-    saveData: jest.fn(), // Mock saveData
-    addStoneToInventory: jest.fn((stone: StoneQualities) => { // Mock addStoneToInventory to update the store for testing UI reaction
-      originalStore.setCurrentSaveData(originalStore.produce((s: any) => { // s can be 'any' or full SaveData type if simple
+    saveData: jest.fn(), 
+    addStoneToInventory: jest.fn((stone: StoneQualities) => { 
+      originalStore.setCurrentSaveData(actualProduce((s: any) => { // Use actual produce directly
         s.stones.push(stone);
         s.stones.sort((a: StoneQualities, b: StoneQualities) => a.createdAt - b.createdAt);
       }));
     }),
-    getCurrentOpponent: jest.fn(() => ({ // Mock opponent
+    getCurrentOpponent: jest.fn(() => ({ 
         id: 'opponent1', name: 'Test Opponent', stones: [mockCreateStoneForOpponent(999)] 
     })), 
   };
