@@ -16,33 +16,65 @@ This is a command-line interface (CLI) game based on procedurally generated ston
         *   ANSI colors based on the stone's color property.
         *   Density characters (█, ▓, ▒, ░) selected based on the stone's weight and hardness.
         *   Magic glyphs (✦, ∗, +) overlaid on the stone's surface, determined by its magic score.
-*   **Gameplay Actions & Economy**:
-    *   **Open Action**:
-        *   The "Open" action is used to generate new stones. It consumes the currently selected stone, effectively "opening" it to reveal new ones.
-        *   It always creates 1 new stone.
-        *   There is a 10% chance for a second extra stone to be generated.
-        *   There is an independent 1% chance for a third extra stone to be generated.
-        *   All newly generated stones are added to the player's inventory.
-    *   **Fight Action**:
-        *   Players use their currently selected stone to battle an opponent's stone from a predefined queue.
-        *   Each stone's power is calculated based on its attributes (rarity, hardness, magic, weight). A variance of ±15% is applied to both the player's and opponent's power for each fight to introduce unpredictability.
-        *   **Outcomes**:
-            *   **Win**: If the player's stone power is greater, the player wins 10 Gold. There is also a 20% chance of finding an additional new stone, which is added to their inventory.
-            *   **Loss**: If the player's stone power is less, there are no Gold changes. However, there is a 30% chance that the player's stone used in the fight is destroyed and removed from their inventory.
-            *   **Tie**: If powers are equal, there are no changes to Gold or stones.
-        *   After each fight, the game advances to the next opponent in the queue.
-    *   **Gold Economy**:
-        *   Gold is the primary in-game currency.
-        *   It is primarily earned by winning fights against opponents.
-        *   The player's current Gold balance is displayed in the user interface.
-    *   **Salvage Action**:
-        *   Players can choose to "Salvage" their currently selected stone.
-        *   This action destroys the stone.
-        *   In return, the player gains Gold equivalent to the stone's rarity multiplied by 10.
+*   **Console Log Panel**: A scrollable panel at the bottom of the screen displays game events, actions, saves, and errors. It acts as a circular buffer, showing the latest 100 lines, with each message timestamped.
+
+## User Interface
+
+The game is played entirely within the terminal using a text-based user interface powered by the `blessed` library.
+
+### Main Menu
+
+The central navigation point of the game. It lists the primary actions available to the player:
+*   **Crack Open Current Stone**: Consumes the currently selected stone to reveal one or more new stones, which are added to the inventory.
+*   **Inventory**: Opens the inventory screen to manage and select stones.
+*   **Fight**: Initiates a battle between the player's currently selected stone and an opponent from the queue.
+*   **Salvage**: Destroys the currently selected stone in exchange for Gold based on its rarity.
+*   **Quit**: Exits the game, saving the current state.
+
+### Inventory Screen
+
+Allows players to manage their collection of stones:
+*   **Stone List**: A scrollable list on the left displays all stones currently in the player's inventory. Players can navigate this list using arrow keys.
+*   **Visual Preview**: A 60x60 area on the right shows a visual representation of the stone currently highlighted in the list.
+*   **Details Panel**: Below the visual preview, a panel displays the full properties of the highlighted stone: Seed, Color, Shape, Rarity, Hardness (formatted to 2 decimal places), Weight (formatted to 2 decimal places), Magic (formatted to 2 decimal places), and CreatedAt (timestamp of creation).
+*   **Exiting**: Players can return to the Main Menu by pressing the `Esc` or `q` key. Selecting a stone (pressing Enter) also returns to the main menu with that stone as the active one.
+
+### Console Log Panel
+Positioned at the bottom of the screen (below the main layout but above the single-line message bar), this panel provides a running log of game activities. It's a scrollable box that keeps the latest 100 messages (approximately). Each message is timestamped and records significant events such as:
+*   Game startup and shutdown.
+*   Saving and loading data (including errors).
+*   Stone actions: cracking open, fighting, salvaging.
+*   Opponent queue regeneration.
+*   Errors and important system messages.
+
+## Gameplay Actions & Economy
+
+*   **Crack Open Current Stone Action**:
+    *   This action is used to generate new stones. It consumes the currently selected stone, effectively "opening" it to reveal new ones.
+    *   It always creates 1 new stone.
+    *   There is a 10% chance for a second extra stone to be generated.
+    *   There is an independent 1% chance for a third extra stone to be generated.
+    *   All newly generated stones are added to the player's inventory.
+*   **Fight Action**:
+    *   Players use their currently selected stone to battle an opponent's stone from a predefined queue.
+    *   Each stone's power is calculated based on its attributes (rarity, hardness, magic, weight). A variance of ±15% is applied to both the player's and opponent's power for each fight to introduce unpredictability.
+    *   **Outcomes**:
+        *   **Win**: If the player's stone power is greater, the player wins 10 Gold. There is also a 20% chance of finding an additional new stone, which is added to their inventory.
+        *   **Loss**: If the player's stone power is less, there are no Gold changes. However, there is a 30% chance that the player's stone used in the fight is destroyed and removed from their inventory.
+        *   **Tie**: If powers are equal, there are no changes to Gold or stones.
+    *   After each fight, the game advances to the next opponent in the queue.
+*   **Gold Economy**:
+    *   Gold is the primary in-game currency.
+    *   It is primarily earned by winning fights against opponents.
+    *   The player's current Gold balance is displayed in the user interface.
+*   **Salvage Action**:
+    *   Players can choose to "Salvage" their currently selected stone.
+    *   This action destroys the stone.
+    *   In return, the player gains Gold equivalent to the stone's rarity multiplied by 10.
 
 ## Prerequisites
 
-*   Node.js (version 20 or higher recommended)
+*   Node.js (version 20.x or higher recommended)
 *   npm (usually comes with Node.js)
 
 ## Setup & Running
@@ -78,7 +110,7 @@ This is a command-line interface (CLI) game based on procedurally generated ston
     ```bash
     npm run dev
     ```
-    This typically requires `nodemon` or similar, which is not explicitly in `package.json` but implied by the script. (Note: The `dev` script `tsc -w & nodemon dist/index.js` might need `nodemon` installed globally or as a dev dependency).
+    This script uses `tsc -w` for continuous TypeScript compilation and `nodemon` to restart the application when `dist/index.js` changes. Ensure `nodemon` is installed (e.g., `npm install -g nodemon` or add it to `devDependencies`).
 
 *   **Run tests:**
     ```bash
@@ -86,6 +118,20 @@ This is a command-line interface (CLI) game based on procedurally generated ston
     ```
 
 *   **Linting/Formatting**: ESLint and Prettier are intended for use (configuration may be needed).
+
+## Continuous Integration (CI)
+
+This project uses GitHub Actions for Continuous Integration. The CI workflow is defined in `.github/workflows/main.yml` and includes the following:
+*   **Triggers**: Automatically runs on every `push` and `pull_request` to the `main` branch.
+*   **Environment**: Uses Ubuntu latest with Node.js version 20.x.
+*   **Steps**:
+    1.  Checks out the repository.
+    2.  Sets up Node.js and caches npm dependencies.
+    3.  Installs dependencies using `npm ci`.
+    4.  Runs the linter (`npm run lint`).
+    5.  Executes automated tests (`npm test`).
+    6.  Performs a project build (`npm run build`).
+This ensures that code contributions are automatically checked for quality, style, and correctness.
 
 ## Project Structure
 
@@ -97,11 +143,12 @@ This is a command-line interface (CLI) game based on procedurally generated ston
     *   `render.ts`: Renders stones to a 60x60 colored string grid using shape masks and stone qualities.
     *   `/tests`: Contains Jest unit tests.
 *   `/dist`: Contains the compiled JavaScript code (after running `npm run build`).
+*   `.github/workflows`: Contains GitHub Actions workflow configurations (e.g., `main.yml` for CI).
 
 ## Language & Tools
 
 *   TypeScript 5.x
-*   Node.js 20
+*   Node.js 20.x
 *   blessed (for terminal UI)
 *   seedrandom (for deterministic RNG)
 *   chalk (for terminal colors)

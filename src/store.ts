@@ -123,7 +123,11 @@ export function loadData(): SaveData {
 
 /**
  * Saves the provided game data to the save file.
+ * Performs basic validation on the data before saving.
+ * Throws an error if saving to the file system fails, which should be handled by the caller.
+ *
  * @param data The SaveData object to save.
+ * @throws Error if file system operations fail during saving.
  */
 export function saveData(data: SaveData): void {
   try {
@@ -155,6 +159,12 @@ export function saveData(data: SaveData): void {
     const dataString = JSON.stringify(cleanData, null, 2);
     fs.writeFileSync(SAVE_PATH, dataString, 'utf-8');
   } catch (error) {
-    // console.error("Error saving game data:", error);
+    // console.error("Error saving game data:", error); // Original line
+    // Re-throw the error so the caller can handle it (e.g., for logging)
+    if (error instanceof Error) {
+      throw new Error(`Failed to save game data: ${error.message}`);
+    } else {
+      throw new Error(`Failed to save game data due to an unknown error.`);
+    }
   }
 }

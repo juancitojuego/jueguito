@@ -3,8 +3,12 @@
 import { renderStone } from '../render';
 import { generateShapeMask, MASK_WIDTH, MASK_HEIGHT } from '../shapeMasks';
 import { StoneQualities, deriveStoneQualities, SHAPES, COLORS } from '../stone'; // Using deriveStoneQualities to get realistic test data
+import chalk from 'chalk';
 
 describe('Stone Renderer - renderStone', () => {
+  // Force chalk to output ANSI codes for testing purposes
+  chalk.level = 1; // 1 for basic 16 color support, 2 for 256, 3 for truecolor. Basic should be enough.
+
   const defaultSeed = 12345;
 
   // Helper to create a simple stone for testing

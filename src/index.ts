@@ -17,22 +17,40 @@ import { generateShapeMask } from './shapeMasks';
 import { renderStone } from './render';
 
 // --- Global State ---
+/** The main blessed screen object, provides the terminal interface. */
 let screen: blessed.Widgets.Screen;
+
+// Console Log Panel Globals
+const MAX_CONSOLE_MESSAGES = 100;
+const consoleLogMessages: string[] = [];
+/** Displays scrollable game event logs, errors, and other messages. */
+let consoleLogBox: blessed.Widgets.Log | null = null;
+
 let currentSaveData: SaveData;
 let currentStoneDetails: StoneQualities | null = null;
 let gamePrng: seedrandom.PRNG; // General PRNG for game events like probabilities
 let opponentQueue: StoneQualities[] = [];
 
 // --- UI Elements ---
+/** The main layout container for the primary game interface (stone info, preview, menu). */
 let mainLayout: blessed.Widgets.LayoutElement;
+/** Displays detailed information about the currently selected/active stone. */
 let currentStoneInfoBox: blessed.Widgets.BoxElement;
+/** Visually renders the currently selected/active stone. */
 let stonePreviewBox: blessed.Widgets.BoxElement;
+/** Interactive list for main game actions (Crack Open, Fight, Salvage, Inventory, Quit). */
 let menuListBox: blessed.Widgets.ListElement;
-let messageLine: blessed.Widgets.TextElement;
+/** Single line at the bottom of the screen for temporary messages and user feedback. */
+let messageLine: blessed.Widgets.TextElement; // Will be initialized early
 
+/** Layout container for the inventory screen. */
 let inventoryLayout: blessed.Widgets.LayoutElement | null = null;
+/** Scrollable list displaying stones in the player's inventory. */
 let inventoryList: blessed.Widgets.ListElement | null = null;
+/** Displays the visual preview of the stone highlighted in the inventoryList. */
 let inventoryPreviewBox: blessed.Widgets.BoxElement | null = null;
+/** Displays detailed properties of the stone highlighted in the inventoryList. */
+let inventoryDetailBox: blessed.Widgets.BoxElement | null = null;
 let inventorySelectedIndex = 0;
 
 // --- Helper Functions ---
@@ -44,21 +62,31 @@ function addStoneToInventory(stone: StoneQualities): void {
 
 // --- Opponent Queue Functions ---
 function generateOpponentQueue(prng: seedrandom.PRNG, count: number): StoneQualities[] {
+  logMessage(`Generating new opponent queue with ${count} opponents.`);
   const newQueue: StoneQualities[] = [];
   for (let i = 0; i < count; i++) {
     const stoneSeed = generateNewStoneSeed(prng);
     const opponentStone = createStone(stoneSeed);
     newQueue.push(opponentStone);
   }
+  logMessage(`Generated ${newQueue.length} new opponents for the queue.`);
   return newQueue;
 }
 
 function getCurrentOpponent(): StoneQualities | null {
   if (currentSaveData.opponents_index >= opponentQueue.length && opponentQueue.length > 0) {
-    // Regenerate queue if index is out of bounds and queue was previously generated
-    opponentQueue = generateOpponentQueue(gamePrng, 100);
+    logMessage(
+      `Opponent index ${currentSaveData.opponents_index} is out of bounds for queue length ${opponentQueue.length}. Regenerating opponent queue.`
+    );
+    opponentQueue = generateOpponentQueue(gamePrng, 100); // generateOpponentQueue now logs its own start/finish
     currentSaveData.opponents_index = 0;
-    saveData(currentSaveData); // Persist the reset index and potentially new salt from new save data if gameSeed changes
+    try {
+      saveData(currentSaveData); // Persist the reset index
+      logMessage('Game data saved after opponent queue regeneration and index reset.');
+    } catch (e: any) {
+      logMessage(`Error saving game data after opponent queue regeneration: ${e.message}`);
+      showMessage(`SAVE FAILED (opponent queue): ${e.message}`, 3000);
+    }
   }
 
   if (opponentQueue.length > 0 && currentSaveData.opponents_index < opponentQueue.length) {
@@ -67,7 +95,31 @@ function getCurrentOpponent(): StoneQualities | null {
 
   // If queue is empty even after potential regeneration (e.g. count = 0 in generateOpponentQueue)
   // or if initial generation hasn't happened.
+  logMessage('Opponent queue is empty or index is out of bounds and no regeneration occurred.');
   return null;
+}
+
+// --- Logging Function ---
+/**
+ * Logs a message to the console log panel and internal message buffer.
+ * Manages a circular buffer of messages (MAX_CONSOLE_MESSAGES).
+ * Prepends a timestamp to each message.
+ *
+ * @param message The string message to log.
+ */
+function logMessage(message: string): void {
+  const timestamp = new Date().toLocaleTimeString();
+  const timedMessage = `[${timestamp}] ${message}`;
+
+  consoleLogMessages.push(timedMessage);
+  if (consoleLogMessages.length > MAX_CONSOLE_MESSAGES) {
+    consoleLogMessages.shift(); // Keep the array size fixed, removing the oldest
+  }
+
+  if (consoleLogBox && consoleLogBox.screen) {
+    consoleLogBox.log(timedMessage); // Use .log() method for blessed.Log
+    if (screen && screen.focused) screen.render();
+  }
 }
 
 // --- Core Functions ---
@@ -116,28 +168,44 @@ Currency: ${currentSaveData.currency}`);
 
 function showMessage(msg: string, duration: number = 3000) {
   if (messageLine && messageLine.screen) {
-    messageLine.setContent(msg);
-    if (screen && screen.focused) screen.render(); // Use screen.focused
+    // Truncate message if it's too long for the messageLine
+    // Assuming messageLine width is available and typical character width.
+    // This is a rough estimate; blessed may handle overflow differently based on tags.
+    const maxWidth = (messageLine.width as number) - 2; // Account for potential borders/padding
+    const truncatedMsg = msg.length > maxWidth ? msg.substring(0, maxWidth - 3) + '...' : msg;
+    messageLine.setContent(truncatedMsg);
+    logMessage(`showMessage: ${msg}`); // Log the full original message
+
+    if (screen && screen.focused) screen.render();
     if (duration > 0) {
       setTimeout(() => {
-        if (messageLine && messageLine.screen && messageLine.getContent() === msg) {
+        if (messageLine && messageLine.screen && messageLine.getContent() === truncatedMsg) {
           messageLine.setContent('');
-          if (screen && screen.focused) screen.render(); // Use screen.focused
+          if (screen && screen.focused) screen.render();
         }
       }, duration);
     }
+  } else {
+    // If messageLine isn't ready, still log it.
+    logMessage(`showMessage (no UI): ${msg}`);
   }
 }
 
 function shutdown(exitCode: number = 0) {
+  logMessage(`Shutting down with exit code ${exitCode}.`);
   if (currentSaveData) {
-    saveData(currentSaveData);
+    try {
+      saveData(currentSaveData);
+      logMessage('Game data saved successfully during shutdown.');
+    } catch (e: any) {
+      logMessage(`Error saving game data during shutdown: ${e.message}`);
+    }
   }
   if (screen) {
-    // Simpler check for screen existence
     screen.destroy();
     // @ts-ignore: screen can be undefined after destroy
     screen = undefined;
+    console.log('Screen destroyed.'); // Log to actual console as blessed is gone
   }
   process.exit(exitCode);
 }
@@ -156,7 +224,7 @@ function showMainMenu() {
       top: 0,
       left: 0,
       width: '100%',
-      height: '100%-1',
+      height: '100%-11', // Adjusted for consoleLogBox (10 lines) + messageLine (1 line)
       // No 'layout' property for manual positioning
     } as any);
 
@@ -196,7 +264,7 @@ function showMainMenu() {
       left: 0,
       width: '30%',
       height: '50%',
-      items: ['Open', 'Fight', 'Salvage', 'Inventory', 'Quit'],
+      items: ['Crack Open Current Stone', 'Fight', 'Salvage', 'Inventory', 'Quit'],
       keys: true,
       vi: true,
       mouse: true,
@@ -205,20 +273,11 @@ function showMainMenu() {
       tags: true,
     });
 
-    if (!messageLine || !messageLine.screen) {
-      messageLine = blessed.text({
-        parent: screen,
-        bottom: 0,
-        left: 0,
-        height: 1,
-        width: '100%',
-        content: 'Welcome to Stone-Crafter!',
-        style: { bg: 'grey', fg: 'white' },
-        tags: true,
-      });
-    } else {
-      messageLine.setFront();
+    // messageLine is initialized in main() before showMainMenu is called
+    if (messageLine && messageLine.screen) {
+        messageLine.setFront(); // Ensure it's on top if it was somehow covered
     }
+
 
     menuListBox.on('select', (itemEl, index) => {
       const actionText = menuListBox.getItem(index).getContent(); // Use getItem(index).getContent()
@@ -228,20 +287,23 @@ function showMainMenu() {
       } else if (actionText === 'Inventory') {
         if (mainLayout && mainLayout.screen) mainLayout.hide();
         showInventoryMenu();
-      } else if (actionText === 'Open') {
+      } else if (actionText === 'Crack Open Current Stone') {
         if (!currentSaveData.currentStoneSeed) {
-          showMessage('No current stone to open!');
+          const msg = 'No current stone to crack open! Select one from inventory or start a new game if empty.';
+          showMessage(msg);
+          // logMessage is called by showMessage, no need for specific logMessage(`Open action failed: ${msg}`);
           if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
         const openedStoneSeed = currentSaveData.currentStoneSeed;
-        if (!openedStoneSeed) {
-          // Should not happen due to earlier check, but good practice
-          showMessage('Error: No stone seed to open!');
+        // This check is somewhat redundant given the one above, but kept for safety.
+        if (!openedStoneSeed) { // Should ideally never be hit if currentStoneSeed is set
+          const msg = 'Error: No stone seed to open despite currentStoneSeed being set!';
+          showMessage(msg);
           if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
-
+        logMessage(`Attempting to crack open stone: ${openedStoneSeed}`);
         currentSaveData.stones = currentSaveData.stones.filter((s) => s.seed !== openedStoneSeed);
 
         const newStones: StoneQualities[] = [];
@@ -268,35 +330,47 @@ function showMainMenu() {
           newStones.push(stone3);
           addStoneToInventory(stone3);
         }
+        try {
+          saveData(currentSaveData); // Save once after all stones are added and sorted by addStoneToInventory
+          logMessage('Game data saved after opening stone.');
+        } catch (e: any) {
+          logMessage(`Error saving game data after opening stone: ${e.message}`);
+          showMessage(`SAVE FAILED: ${e.message}`, 3000); // Also inform user on main message line
+        }
 
-        saveData(currentSaveData); // Save once after all stones are added and sorted by addStoneToInventory
-
+        const oldStoneSeed = currentSaveData.currentStoneSeed;
         currentSaveData.currentStoneSeed =
           newStones.length > 0
             ? newStones[0].seed
             : currentSaveData.stones.length > 0
               ? currentSaveData.stones[0].seed
               : null;
+        logMessage(`Previous stone ${oldStoneSeed} opened. New current stone: ${currentSaveData.currentStoneSeed}. Found ${newStones.length} stones.`);
 
         updateCurrentStoneDetails();
         refreshCurrentStoneDisplay();
         showMessage(
-          `Opened stone ${openedStoneSeed}. Obtained ${newStones.length} new stone(s). First new one is now current.`
+          `Opened stone ${openedStoneSeed}. Obtained ${newStones.length} new stone(s). ${currentSaveData.currentStoneSeed ? 'First new one is now current.' : 'Inventory is now empty.'}`
         );
         if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
       } else if (actionText === 'Fight') {
         if (!currentStoneDetails) {
-          showMessage('No stone selected to fight with!');
+          const msg = 'No stone selected to fight with! Select one from inventory.';
+          showMessage(msg);
+          // logMessage(`Fight action failed: ${msg}`); // Covered by showMessage
           if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
 
         const opponentStone = getCurrentOpponent();
         if (!opponentStone) {
-          showMessage('No opponents available to fight!');
+          const msg = 'No opponents available to fight! (Queue might be empty).';
+          showMessage(msg);
+          // logMessage(`Fight action failed: ${msg}`); // Covered by showMessage
           if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
+        logMessage(`Fight started: Player (${currentStoneDetails.seed}) vs Opponent (${opponentStone.seed})`);
 
         let playerPower = calculateStonePower(currentStoneDetails);
         let opponentPower = calculateStonePower(opponentStone);
@@ -343,27 +417,40 @@ function showMainMenu() {
         }
 
         currentSaveData.opponents_index++; // Advance to next opponent
+        logMessage(`Fight result: ${fightMessage}. Next opponent index: ${currentSaveData.opponents_index}`);
 
         showMessage(fightMessage);
-        saveData(currentSaveData);
+        try {
+          saveData(currentSaveData);
+          logMessage('Game data saved after fight.');
+        } catch (e: any) {
+          logMessage(`Error saving game data after fight: ${e.message}`);
+          showMessage(`SAVE FAILED: ${e.message}`, 3000);
+        }
         refreshCurrentStoneDisplay();
         if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
       } else if (actionText === 'Salvage') {
         if (!currentSaveData.currentStoneSeed || !currentStoneDetails) {
-          showMessage('No current stone to salvage!');
+          const msg = 'No current stone to salvage! Select one from inventory.';
+          showMessage(msg);
+          // logMessage(`Salvage action failed: ${msg}`); // Covered by showMessage
           if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
-        const salvagedStoneSeed = currentSaveData.currentStoneSeed; // This is a number (seed)
-        const stoneToSalvage = currentStoneDetails; // This is StoneQualities | null
+        const salvagedStoneSeed = currentSaveData.currentStoneSeed;
+        const stoneToSalvage = currentStoneDetails;
 
+        // Redundant check, currentStoneDetails implies currentSaveData.currentStoneSeed is valid
         if (!salvagedStoneSeed || !stoneToSalvage) {
-          showMessage('Error: No stone details for salvage!');
+          const msg = 'Error: No stone details for salvage despite earlier checks!';
+          showMessage(msg);
+          logMessage(`Salvage action error: ${msg}`);
           if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
           return;
         }
+        logMessage(`Attempting to salvage stone: ${salvagedStoneSeed}`);
 
-        const salvageValue = stoneToSalvage.rarity * 10; // Use details from currentStoneDetails
+        const salvageValue = stoneToSalvage.rarity * 10;
         currentSaveData.currency += salvageValue;
 
         currentSaveData.stones = currentSaveData.stones.filter((s) => s.seed !== salvagedStoneSeed);
@@ -373,42 +460,76 @@ function showMainMenu() {
         } else {
           currentSaveData.currentStoneSeed = null;
         }
-
-        saveData(currentSaveData); // Explicitly save after salvage
+        try {
+          saveData(currentSaveData); // Explicitly save after salvage
+          logMessage('Game data saved after salvaging stone.');
+        } catch (e: any) {
+          logMessage(`Error saving game data after salvaging stone: ${e.message}`);
+          showMessage(`SAVE FAILED: ${e.message}`, 3000);
+        }
         updateCurrentStoneDetails();
         refreshCurrentStoneDisplay();
-        showMessage(
-          `Salvaged stone ${salvagedStoneSeed} for ${salvageValue} currency. Current currency: ${currentSaveData.currency}`
-        );
+        const salvageMsg = `Salvaged stone ${salvagedStoneSeed} for ${salvageValue} currency. Current currency: ${currentSaveData.currency}. New current stone: ${currentSaveData.currentStoneSeed || 'none'}.`;
+        showMessage(salvageMsg);
+        logMessage(salvageMsg); // showMessage already logs, but this adds more detail if needed
         if (menuListBox && menuListBox.screen) setTimeout(() => menuListBox.focus(), 0);
       }
     });
   }
 
   if (mainLayout && mainLayout.hidden) mainLayout.show();
-  if (messageLine && messageLine.screen) messageLine.setFront();
+  // messageLine is global and should be managed by main screen render cycle
+  // if (messageLine && messageLine.screen) messageLine.setFront(); // Already handled by screen.render usually
 
   updateCurrentStoneDetails();
   refreshCurrentStoneDisplay();
   if (menuListBox && menuListBox.screen) menuListBox.focus();
-  if (screen && screen.focused) screen.render(); // Use screen.focused
+  if (screen && screen.focused) screen.render();
 }
 
 function refreshInventoryPreview() {
-  if (!inventoryPreviewBox || !inventoryPreviewBox.screen || !inventoryList || !inventoryList.screen) return;
+  if (!inventoryPreviewBox || !inventoryPreviewBox.screen ||
+      !inventoryDetailBox || !inventoryDetailBox.screen ||
+      !inventoryList || !inventoryList.screen) {
+    logMessage('Inventory preview refresh skipped: UI elements not ready.');
+    return;
+  }
 
-  const currentInventorySelectionIndex = (inventoryList as any).selected as number; // Cast to any then number
+  const currentInventorySelectionIndex = (inventoryList as any).selected as number;
 
-  if (currentSaveData.stones.length > 0 && currentInventorySelectionIndex < currentSaveData.stones.length) {
-    const selectedStone = currentSaveData.stones[currentInventorySelectionIndex]; // Now a StoneQualities object
+  if (currentSaveData.stones.length > 0 &&
+      currentInventorySelectionIndex >= 0 && // Ensure index is valid
+      currentInventorySelectionIndex < currentSaveData.stones.length) {
+    const selectedStone = currentSaveData.stones[currentInventorySelectionIndex];
+
+    // Update Preview Box (Stone Art)
     const mask = generateShapeMask(selectedStone.shape);
-    const stoneGrid = renderStone(mask, selectedStone);
+    const stoneGrid = renderStone(mask, selectedStone); // renderStone should return a 2D array of strings
     const artString = stoneGrid.map((row) => row.join('')).join('\n');
     inventoryPreviewBox.setContent(artString);
+
+    // Update Detail Box (Stone Properties)
+    const detailString = `Seed: ${selectedStone.seed}
+Color: ${selectedStone.color}
+Shape: ${selectedStone.shape}
+Rarity: ${selectedStone.rarity}
+Hardness: ${selectedStone.hardness.toFixed(2)}
+Weight: ${selectedStone.weight.toFixed(2)}
+Magic: ${selectedStone.magic.toFixed(2)}
+Created: ${new Date(selectedStone.createdAt).toLocaleString()}`;
+    inventoryDetailBox.setContent(detailString);
+    logMessage(`Inventory preview updated for stone: ${selectedStone.seed}`);
+
   } else {
-    inventoryPreviewBox.setContent('{center}Inventory is empty or no stone selected.{/center}');
+    const emptyMsg = '{center}Inventory is empty or no stone selected.{/center}';
+    inventoryPreviewBox.setContent(emptyMsg);
+    inventoryDetailBox.setContent(emptyMsg);
+    logMessage('Inventory preview shows empty/no selection.');
   }
-  if (screen && screen.focused) screen.render(); // Use screen.focused
+
+  if (screen && screen.focused) {
+    screen.render();
+  }
 }
 
 function showInventoryMenu() {
@@ -445,7 +566,7 @@ function showInventoryMenu() {
       top: 0,
       left: '30%',
       width: '70%',
-      height: '100%',
+      height: '70%', // Adjusted height for preview
       border: 'line',
       style: { border: { fg: 'green' } },
       content: '',
@@ -454,14 +575,34 @@ function showInventoryMenu() {
       valign: 'middle',
     });
 
-    inventoryList.on('select item', (itemEl, index) => {
+    inventoryDetailBox = blessed.box({
+      parent: inventoryLayout,
+      label: 'Stone Details',
+      top: '70%', // Positioned below the preview box
+      left: '30%',
+      width: '70%',
+      height: '30%', // Takes the remaining 30% of the right panel height
+      border: 'line',
+      style: { border: { fg: 'cyan' } }, // Different border color for distinction
+      content: '',
+      tags: true,
+      padding: 1,
+    });
+
+    inventoryList.on('select item', (itemEl, index) => { // This event fires when selection changes
       refreshInventoryPreview();
     });
 
-    inventoryList.on('select', (itemEl, index) => {
+    inventoryList.on('select', (itemEl, index) => { // This event fires when Enter is pressed on an item
       if (currentSaveData.stones.length > 0 && index < currentSaveData.stones.length) {
         currentSaveData.currentStoneSeed = currentSaveData.stones[index].seed; // Set the seed
-        saveData(currentSaveData); // Explicitly save after changing current stone
+        try {
+          saveData(currentSaveData); // Explicitly save after changing current stone
+          logMessage(`Game data saved. New current stone selected: ${currentSaveData.currentStoneSeed}`);
+        } catch (e: any) {
+          logMessage(`Error saving game data after selecting new stone: ${e.message}`);
+          showMessage(`SAVE FAILED: ${e.message}`, 3000);
+        }
         updateCurrentStoneDetails(); // This will find the full stone object
       }
       if (inventoryLayout && inventoryLayout.screen) inventoryLayout.hide();
@@ -553,10 +694,13 @@ async function showStartMenu(): Promise<number> {
           const tempRng = mulberry32(Date.now());
           for (let i = 0; i < seedStr.length; i++) tempRng();
           seedNum = generateNewStoneSeed(tempRng) >>> 0;
-          showMessage(`Invalid number. Generated one based on text: ${seedNum}`, 5000);
+          const msg = `Invalid number entered for seed. Generated one based on text: ${seedNum}`;
+          showMessage(msg, 5000); // showMessage also logs
+          // logMessage(msg); // No longer needed as showMessage handles it
         }
       }
       seedNum = seedNum >>> 0;
+      logMessage(`Seed resolved from start menu: ${seedNum}`);
 
       if (startMenuForm.screen) startMenuForm.destroy();
       resolve(seedNum);
@@ -564,6 +708,7 @@ async function showStartMenu(): Promise<number> {
 
     startMenuForm.key(['escape'], () => {
       if (startMenuForm.screen) startMenuForm.destroy();
+      logMessage('User exited start menu via escape key.');
       reject(new Error('User exited start menu.'));
     });
     if (screen && screen.focused) screen.render(); // Use screen.focused
@@ -576,37 +721,102 @@ async function main() {
     title: 'Stone-Crafter',
     fullUnicode: true,
   });
+  logMessage('Screen initialized.');
+
+  // Initialize messageLine and consoleLogBox early
+  messageLine = blessed.text({
+    parent: screen,
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    height: 1,
+    content: 'Welcome to Stone-Crafter! Initializing...',
+    style: { fg: 'white', bg: 'blue' },
+    align: 'center',
+    tags: true,
+  });
+  logMessage('MessageLine initialized.');
+
+  consoleLogBox = blessed.log({
+    parent: screen,
+    bottom: 1, // Positioned above the messageLine
+    width: '100%',
+    height: 10, // Height of the console log panel (10 lines)
+    border: { type: 'line' },
+    style: {
+      fg: 'green',
+      bg: 'black',
+      border: { fg: '#f0f0f0' },
+    },
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: { ch: ' ', inverse: true },
+    label: 'Console Log',
+    tags: true,
+  });
+  logMessage('ConsoleLogBox initialized.');
+
+  // Replay any early messages that were logged before consoleLogBox was ready
+  if (consoleLogBox) {
+    consoleLogMessages.forEach(msg => {
+      if (consoleLogBox) consoleLogBox.log(msg); // Check again, TS paranoia
+    });
+  }
+  logMessage('Early log messages replayed to ConsoleLogBox.');
+
 
   screen.key(['C-c'], () => shutdown(0));
+  logMessage('Ctrl+C handler registered for shutdown.');
 
-  currentSaveData = loadData(); // loadData now returns SaveData with gameSeed, salt, opponents_index
+  try {
+    currentSaveData = loadData();
+    logMessage(`Save data loaded. Game seed: ${currentSaveData.gameSeed}. Stone count: ${currentSaveData.stones.length}. Currency: ${currentSaveData.currency}.`);
+  } catch (error: any) {
+    currentSaveData = getDefaultSaveData(); // Load default if any error
+    logMessage(`Error loading data: ${error.message}. Using default save data.`);
+    showMessage(`Error loading data: ${error.message}. Defaults used.`, 5000);
+  }
+
 
   if (currentSaveData.gameSeed === null) {
-    // Check against null explicitly, as 0 is a valid seed
+    logMessage('No game seed found. Initiating new player setup.');
     try {
-      const initialGameSeed = await showStartMenu();
+      const initialGameSeed = await showStartMenu(); // showStartMenu also logs
       currentSaveData.gameSeed = initialGameSeed;
       gamePrng = seedrandom(initialGameSeed.toString());
+      logMessage(`PRNG initialized with new game seed: ${currentSaveData.gameSeed}`);
 
       const newStoneInternalSeed = generateNewStoneSeed(gamePrng);
       const firstStone = createStone(newStoneInternalSeed);
+      logMessage(`Generated first stone with seed: ${firstStone.seed}`);
 
-      addStoneToInventory(firstStone); // Use the new helper
+      addStoneToInventory(firstStone);
       currentSaveData.currentStoneSeed = firstStone.seed;
-      saveData(currentSaveData); // Save after initial stone is added
+      try {
+        saveData(currentSaveData);
+        logMessage('Game data saved after initial new player setup.');
+      } catch (e: any) {
+        logMessage(`Error saving game data after initial setup: ${e.message}`);
+        // This is a critical save, might want to alert user more strongly or handle differently
+        showMessage(`CRITICAL SAVE FAILED: ${e.message}. Progress may not be saved.`, 5000);
+      }
 
       showMessage(`Game started with new game seed: ${currentSaveData.gameSeed}. Your first stone is active.`, 5000);
     } catch (err: any) {
-      showMessage(err.message || 'Exited during setup.', 2000);
-      await new Promise((r) => setTimeout(r, 2000));
+      const errMsg = err.message || 'Exited during setup.';
+      logMessage(`Error during new player setup: ${errMsg}`);
+      showMessage(errMsg, 3000);
+      await new Promise((r) => setTimeout(r, 3000));
       shutdown(1);
       return;
     }
   } else {
     gamePrng = seedrandom(currentSaveData.gameSeed.toString());
+    logMessage(`PRNG initialized from existing game seed: ${currentSaveData.gameSeed}.`);
   }
 
-  opponentQueue = generateOpponentQueue(gamePrng, 100); // Populate opponent queue
+  opponentQueue = generateOpponentQueue(gamePrng, 100);
+  logMessage(`Opponent queue generated with ${opponentQueue.length} opponents.`);
 
   // Ensure currentStoneSeed is valid or set a default
   if (currentSaveData.currentStoneSeed === null && currentSaveData.stones.length > 0) {
@@ -620,20 +830,40 @@ async function main() {
   }
   // If stones array is empty, currentStoneSeed will remain/become null.
 
-  updateCurrentStoneDetails(); // Call this once after PRNG and save data are settled
-  showMainMenu(); // This will call refreshCurrentStoneDisplay
+  updateCurrentStoneDetails();
+  logMessage(`Current stone details updated: ${currentStoneDetails ? currentStoneDetails.seed : 'None'}`);
+  showMainMenu();
+  logMessage('Main menu displayed. Application setup complete.');
 }
 
 // --- Program Entry ---
 if (require.main === module) {
-  main().catch((err) => {
+  // Log unhandled errors to the console log if possible, then to stderr
+  process.on('uncaughtException', (err) => {
+    const errorMsg = `UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}`;
+    logMessage(errorMsg); // Try to log to blessed console if active
+
+    // Ensure it also goes to stderr for cases where blessed might be broken
+    console.error(chalk.red('Stone-Crafter UNCAUGHT EXCEPTION:'), err);
+
+    if (screen) { // Attempt graceful shutdown if possible
+        screen.destroy();
+        // @ts-ignore
+        screen = undefined;
+    }
+    process.exit(1);
+  });
+
+  main().catch((err) => { // Catch errors from the main async function
+    const errorMsg = `Critical error during main execution: ${err.message}\n${err.stack}`;
+    logMessage(errorMsg); // Log to blessed console if active
+
     if (screen) {
-      // Simpler check for screen existence before destroy
       screen.destroy();
       // @ts-ignore
       screen = undefined;
     }
-    console.error(chalk.red('Stone-Crafter encountered a critical error:'), err);
+    console.error(chalk.red('Stone-Crafter encountered a critical error during main:'), err);
     process.exit(1);
   });
 }
