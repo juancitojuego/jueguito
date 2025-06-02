@@ -79,15 +79,15 @@ const InventoryMenu: Component<InventoryMenuProps> = (props) => {
               {/* Optionally, still list details if StonePreview is minimal, or remove this section */}
               <h4 style={{"margin-top": "15px"}}>Properties:</h4>
               <ul style={{ "list-style-type": 'none', padding: '0', "font-size": "0.9em" }}>
-                <li><strong>Name:</strong> {stone.name || 'Unnamed Stone'}</li>
-                <li><strong>Seed:</strong> {stone.seed}</li>
-                <li><strong>Color:</strong> {stone.color}</li>
-                <li><strong>Shape:</strong> {stone.shape}</li>
-                <li><strong>Rarity:</strong> {stone.rarity}</li>
-                <li><strong>Hardness:</strong> {stone.hardness.toFixed(2)}</li>
-                <li><strong>Weight:</strong> {stone.weight.toFixed(2)}</li>
-                <li><strong>Magic:</strong> {stone.magic.toFixed(2)}</li>
-                <li><strong>Created:</strong> {new Date(stone.createdAt).toLocaleString()}</li>
+                <li><strong>Name:</strong> {stone().name || 'Unnamed Stone'}</li>
+                <li><strong>Seed:</strong> {stone().seed}</li>
+                <li><strong>Color:</strong> {stone().color}</li>
+                <li><strong>Shape:</strong> {stone().shape}</li>
+                <li><strong>Rarity:</strong> {stone().rarity}</li>
+                <li><strong>Hardness:</strong> {stone().hardness.toFixed(2)}</li>
+                <li><strong>Weight:</strong> {stone().weight.toFixed(2)}</li>
+                <li><strong>Magic:</strong> {stone().magic.toFixed(2)}</li>
+                <li><strong>Created:</strong> {new Date(stone().createdAt).toLocaleString()}</li>
               </ul>
               <button 
                 onClick={handleSetAsCurrent} 

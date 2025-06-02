@@ -10,12 +10,12 @@ const MessageLine: Component = () => {
             border: '1px solid blue',
             padding: '10px',
             margin: '5px',
-            background_color: msg.type === 'error' ? 'lightcoral' : msg.type === 'success' ? 'lightgreen' : 'lightblue',
-            color: msg.type === 'error' ? 'white' : 'black',
-            text_align: 'center',
+            "background-color": msg().type === 'error' ? 'lightcoral' : msg().type === 'success' ? 'lightgreen' : 'lightblue', // kebab-case
+            color: msg().type === 'error' ? 'white' : 'black',
+            "text-align": 'center', // kebab-case
           }}
         >
-          {msg.text}
+          {msg().text}
         </div>
       )}
     </Show>

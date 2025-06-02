@@ -30,16 +30,23 @@ const CELL_SIZE = 1; // Each cell in the mask becomes a 1x1 unit in SVG
 
 // Magic Glyphs as simple SVG paths or symbols
 const SVG_MAGIC_GLYPHS = {
-  plus: (x: number, y: number, size: number, color: string) => (
-    <path d={`M${x-size/2},${y} H${x+size/2} M${x},${y-size/2} V${y+size/2}`} stroke={color} stroke-width={size * 0.2} />
-  ),
-  star: (x: number, y: number, size: number, color: string) => (
+  plus: (x: number, y: number, size: number, color: string): JSX.Element => {
+    const dValue = `M${x-size/2},${y} H${x+size/2} M${x},${y-size/2} V${y+size/2}`;
+    const strokeW = size * 0.2;
+    return <path d={dValue} stroke={color} stroke-width={strokeW} />;
+  },
+  star: (x: number, y: number, size: number, color: string): JSX.Element => {
     // Simple 4-point star
-    <path d={`M${x},${y-size/2} L${x+size/4},${y-size/4} L${x+size/2},${y} L${x+size/4},${y+size/4} L${x},${y+size/2} L${x-size/4},${y+size/4} L${x-size/2},${y} L${x-size/4},${y-size/4} Z`} fill={color} />
-  ),
-  diamond: (x: number, y: number, size: number, color: string) => (
-    <rect x={x - size / 2} y={y - size / 2} width={size} height={size} fill={color} transform={`rotate(45 ${x} ${y})`} />
-  ),
+    const dValue = `M${x},${y-size/2} L${x+size/4},${y-size/4} L${x+size/2},${y} L${x+size/4},${y+size/4} L${x},${y+size/2} L${x-size/4},${y+size/4} L${x-size/2},${y} L${x-size/4},${y-size/4} Z`;
+    return <path d={dValue} fill={color} />;
+  },
+  diamond: (x: number, y: number, size: number, color: string): JSX.Element => {
+    const halfSize = size / 2;
+    const xVal = x - halfSize;
+    const yVal = y - halfSize;
+    const transformVal = `rotate(45 ${x} ${y})`;
+    return <rect x={xVal} y={yVal} width={size} height={size} fill={color} transform={transformVal} />;
+  },
 };
 
 function getMagicGlyphDetails(magic: number): { type: keyof typeof SVG_MAGIC_GLYPHS; count: number } {
@@ -97,17 +104,18 @@ export function renderStoneToSVG(stone: StoneQualities): JSX.Element {
             width={CELL_SIZE}
             height={CELL_SIZE}
             fill={cellFill}
-            opacity={cellOpacity}
+            opacity={String(cellOpacity)} // Ensure opacity is a string
           />
         );
 
         // Add magic glyph if this position is chosen
         if (glyphPositions.has(`${r},${c}`)) {
           const glyphColor = kontrast.isLight(baseSvgColor) ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)';
-          const glyphElement = SVG_MAGIC_GLYPHS[magicGlyphType](
-            (c + CELL_SIZE / 2), // center of the cell
-            (r + CELL_SIZE / 2), // center of the cell
-            CELL_SIZE * 0.8,     // size of the glyph relative to cell
+          // Ensure type compatibility if JSX.Element is strictly enforced by a stricter tsconfig in test
+          const glyphElement: JSX.Element = SVG_MAGIC_GLYPHS[magicGlyphType](
+            (c + CELL_SIZE / 2), 
+            (r + CELL_SIZE / 2), 
+            CELL_SIZE * 0.8,    
             glyphColor
           );
           elements.push(glyphElement);
@@ -117,26 +125,29 @@ export function renderStoneToSVG(stone: StoneQualities): JSX.Element {
   }
   
   // Add a subtle border to the whole stone based on rarity
-  let strokeColor = "none";
-  let strokeWidth = 0;
+  let svgStrokeColor = "none"; // Renamed to avoid conflict with JSX stroke prop
+  let svgStrokeWidth = "0"; // Ensure string for SVG attribute
   if (stone.rarity > 75) {
-    strokeColor = stone.rarity > 90 ? "gold" : "silver";
-    strokeWidth = 0.25 * CELL_SIZE; // Thicker border for very rare
+    svgStrokeColor = stone.rarity > 90 ? "gold" : "silver";
+    svgStrokeWidth = String(0.25 * CELL_SIZE); 
   }
 
+  const svgStyle: JSX.CSSProperties = {
+    border: '1px solid #eee',
+    "background-color": "#f0f0f0",
+  };
 
   return (
     <svg
-      width="100%" // Make SVG responsive
+      width="100%"
       height="100%"
       viewBox={`0 0 ${SVG_VIEWBOX_WIDTH} ${SVG_VIEWBOX_HEIGHT}`}
       preserveAspectRatio="xMidYMid meet"
-      style={{ border: '1px solid #eee', "background-color": "#f0f0f0" }}
+      style={svgStyle}
     >
-      <g stroke={strokeColor} stroke-width={strokeWidth}>
+      <g stroke={svgStrokeColor} stroke-width={svgStrokeWidth}>
         {elements}
       </g>
-      {/* You can add filters here for more effects, e.g. a slight blur or shine */}
     </svg>
   );
 }

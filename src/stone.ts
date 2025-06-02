@@ -10,6 +10,7 @@ export interface StoneQualities {
   hardness: number; // 0.00-1.00
   magic: number;
   createdAt: number;
+  name?: string; // Optional user-defined name
 }
 
 // --- Constants ---

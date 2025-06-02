@@ -1,5 +1,5 @@
 import { Component, Show, createSignal, createEffect, onMount } from 'solid-js';
-import { currentSaveData, loadData, generateOpponentList, initializeGamePrng, gamePrngInstance } from './store'; // Assuming gamePrngInstance is exported for checking
+import { currentSaveData, loadData, generateOpponentList, initializeGamePrng } from './store'; // Removed gamePrngInstance
 import StartMenu from './components/StartMenu';
 import ConsoleLog from './components/ConsoleLog';
 import MessageLine from './components/MessageLine';
@@ -16,13 +16,11 @@ const MainGameArea: Component<{ toggleInventory: () => void }> = (props) => {
     if (currentSaveData.gameSeed !== null && currentSaveData.gameSeed !== undefined) {
       // Check if PRNG is initialized, if not (e.g. after direct load into game), initialize it.
       // store.ts's loadData also tries to init PRNG and opponent list. This is a fallback.
-      if (!gamePrngInstance) { // We need a way to check if gamePrngInstance is initialized.
-                               // Assuming gamePrngInstance is exported from store or a check function exists.
-                               // For now, this check might be conceptual if gamePrngInstance is not directly accessible.
-                               // The store's loadData should handle this.
-        initializeGamePrng(currentSaveData.gameSeed);
-        console.log("App.tsx: Initialized gamePrng because it wasn't set.");
-      }
+      // The store's loadData should handle this.
+      // if (currentSaveData.gameSeed && !getGamePrng()) { // getGamePrng would throw if not init
+      //  initializeGamePrng(currentSaveData.gameSeed);
+      //  console.log("App.tsx: Initialized gamePrng because it wasn't set.");
+      // }
       // Generate opponent queue if it's empty (e.g., on first load or if not persisted)
       // store.ts's loadData handles this as well.
       // if (opponentQueue.length === 0) {

@@ -1,6 +1,6 @@
 import { Component, Show, JSX } from 'solid-js';
 import { currentStoneDetails, StoneQualities } from '../store'; // Adjust path as needed
-import { renderStoneToSVG } from '../render'; // Import the new SVG renderer
+import { renderStoneToSVG } from '../render.tsx'; // Updated import path
 
 interface StonePreviewProps {
   stone?: StoneQualities | null;

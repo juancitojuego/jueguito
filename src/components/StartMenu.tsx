@@ -1,5 +1,5 @@
 import { Component, createSignal } from 'solid-js';
-import { setCurrentSaveData, saveData, initializeGamePrng, getDefaultSaveData } from '../store';
+import { setCurrentSaveData, saveData, initializeGamePrng, getGamePrng, getDefaultSaveData } from '../store'; // Added getGamePrng
 import { createStone, generateNewStoneSeed, mulberry32 } from '../stone';
 import { logMessage, showMessage } from '../utils';
 
@@ -89,7 +89,7 @@ const StartMenu: Component = () => {
       </div>
       <button 
         onClick={handleStartGame}
-        style={{ margin: '10px 5px', padding: '10px 20px', background_color: 'lightgreen', border_radius: '5px' }}
+        style={{ margin: '10px 5px', padding: '10px 20px', "background-color": 'lightgreen', "border-radius": '5px' }} // Changed to string literal keys
       >
         Start Game
       </button>
