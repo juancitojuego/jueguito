@@ -136,7 +136,7 @@ describe('FightService', () => {
       expect(outcome.stoneLostByPlayer).toBe(true);
       expect(outcome.newStoneGainedByPlayer).toBeUndefined();
       expect(outcome.logMessage).toContain('Opponent wins.');
-      expect(outcome.logMessage).toContain("Player's stone was destroyed");
+      expect(outcome.logMessage).toContain(`Player's stone (Seed: ${playerStoneBase.seed}) was destroyed!`);
       expect(mockRandomService.getRandom).toHaveBeenCalledTimes(3);
     });
 

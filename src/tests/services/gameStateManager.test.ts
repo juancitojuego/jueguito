@@ -167,7 +167,7 @@ describe('GameStateManager', () => {
       expect(loadedState.playerStats.name).toBe('Saver');
       expect(loadedState.currency).toBe(100);
       expect(loadedState.stones.length).toBe(2); // First stone + Kept Stone
-      expect(loadedState.stones.find(s => s.seed === 987)).toBeDefined();
+      expect(loadedState.stones.find((s: StoneQualities) => s.seed === 987)).toBeDefined();
       expect(loadedState.opponentsSeed).toBe(666);
       expect(mockRandomService.initialize).toHaveBeenCalledWith(555); // From the load
     });
@@ -207,21 +207,31 @@ describe('GameStateManager', () => {
 
     test('addStoneToInventory() should add stone, sort, and notify', () => {
         gameStateManager.subscribe(mockListener);
-        const initialStoneCount = gameStateManager.getCurrentState().stones.length; // Should be 1
-        const stoneNewTime = Date.now() + 1000;
-        const stoneOldTime = Date.now() - 1000;
+        const initialStones = gameStateManager.getCurrentState().stones;
+        const initialStoneCount = initialStones.length; // Should be 1
+        const originalFirstStone = initialStones[0]; // Persist the original first stone for comparison
 
-        const newStone1 = createTestStone(5001, "Newest", stoneNewTime);
-        const newStone2 = createTestStone(5002, "Oldest", stoneOldTime);
+        // It's crucial that originalFirstStone.createdAt is between stoneOldTime and stoneNewTime
+        // for the sort order to be predictable as Older, Original, Younger.
+        // We assume createTestStone uses Date.now() if createdAt is not provided.
+        // And that the first stone (originalFirstStone) was created at a time "now"
+        // relative to the beforeEach block's execution.
+        const originalCreatedAt = originalFirstStone.createdAt;
+        const stoneOldTime = originalCreatedAt - 1000; // Ensure this is definitely older
+        const stoneNewTime = originalCreatedAt + 1000; // Ensure this is definitely newer
 
-        gameStateManager.addStoneToInventory(newStone1);
-        gameStateManager.addStoneToInventory(newStone2);
+        const newStoneYounger = createTestStone(5001, "YoungerStone", stoneNewTime); // Youngest
+        const newStoneOlder = createTestStone(5002, "OlderStone", stoneOldTime);   // Oldest
+
+        gameStateManager.addStoneToInventory(newStoneYounger); // Call 1 to listener
+        gameStateManager.addStoneToInventory(newStoneOlder);   // Call 2 to listener
         
         const state = gameStateManager.getCurrentState();
         expect(state.stones.length).toBe(initialStoneCount + 2);
-        expect(state.stones[0].seed).toBe(newStone2.seed); // Oldest should be first
-        expect(state.stones[1].seed).not.toBe(newStone1.seed); // original first stone will be here
-        expect(state.stones[2].seed).toBe(newStone1.seed); // Newest should be last
+        // Sorted by createdAt: OlderStone, originalFirstStone, YoungerStone
+        expect(state.stones[0].seed).toBe(newStoneOlder.seed);
+        expect(state.stones[1].seed).toBe(originalFirstStone.seed);
+        expect(state.stones[2].seed).toBe(newStoneYounger.seed);
         expect(mockListener).toHaveBeenCalledTimes(2);
     });
 
@@ -273,7 +283,8 @@ describe('GameStateManager', () => {
 
     test('generateNewOpponentQueue() should populate internal queue and reset index', () => {
       // Note: seedrandom (used inside generateNewOpponentQueue) is not using mockRandomService.getRandom
-      // so the opponent stones will be based on the actual seedrandom output for opponentsSeed (101)
+      // so the opponent stones will be based on the actual seedrandom output for opponentsSeed (from beforeEach)
+      gameStateManager.subscribe(mockListener); // Subscribe the listener for this test
       const queue = gameStateManager.generateNewOpponentQueue(5);
       expect(queue.length).toBe(5);
       // Check if the internal state reflects this (though queue itself isn't part of GameState)
@@ -349,11 +360,9 @@ describe('GameStateManager', () => {
 
     test('getEquippedStoneDetails() should return the equipped stone', () => {
       const equipped = gameStateManager.getEquippedStoneDetails();
-      const equipped = gameStateManager.getEquippedStoneDetails();
       const currentStones = gameStateManager.getCurrentState().stones;
       const expectedEquippedStone = currentStones.find((s: StoneQualities) => s.seed === gameStateManager.getCurrentState().equippedStoneId);
       expect(equipped).toEqual(expectedEquippedStone);
-      // expect(equipped?.seed).toBe(stone1.seed); // This might be fragile if stone1 is not the first after sorts
     });
 
     test('getEquippedStoneDetails() should return null if no stone is equipped', () => {
@@ -363,8 +372,8 @@ describe('GameStateManager', () => {
 
     test('getStoneById() should return correct stone or null', () => {
       const currentStones = gameStateManager.getCurrentState().stones;
-      const stone1FromState = currentStones.find(s => s.seed === stone1.seed)!; // Ensure we use the actual stone from state
-      const stone2FromState = currentStones.find(s => s.seed === stone2.seed)!;
+      const stone1FromState = currentStones.find((s: StoneQualities) => s.seed === stone1.seed)!; // Ensure we use the actual stone from state
+      const stone2FromState = currentStones.find((s: StoneQualities) => s.seed === stone2.seed)!;
 
       expect(gameStateManager.getStoneById(stone1FromState.seed)?.seed).toBe(stone1FromState.seed);
       expect(gameStateManager.getStoneById(stone2FromState.seed)?.seed).toBe(stone2FromState.seed);

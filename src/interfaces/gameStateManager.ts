@@ -1,5 +1,5 @@
 // src/interfaces/gameStateManager.ts
-import type { GameState } from './gameState';
+export type { GameState, PlayerStats } from './gameState'; // Ensure PlayerStats is also re-exported
 import type { StoneQualities } from './stone';
 
 // Listener for state changes. The listener receives the new state.

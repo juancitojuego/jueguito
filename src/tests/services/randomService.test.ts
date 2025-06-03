@@ -32,7 +32,8 @@ describe('RandomService', () => {
 
       // Check determinism with the new seed
       const rs2 = new RandomService(newSeed);
-      expect(rs.getRandom()).toBe(rs2.getRandom());
+      rs.initialize(newSeed); // Re-initialize rs to reset its internal state for a fair comparison
+      expect(rs.getRandom()).toBe(rs2.getRandom()); // Compare the first number from both
     });
   });
 
