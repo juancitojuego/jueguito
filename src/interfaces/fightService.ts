@@ -1,45 +1,73 @@
 // src/interfaces/fightService.ts
 import type { StoneQualities } from './stone';
+import type { Card } from './card';
+import type { ActiveEffect } from './activeEffect';
+import type { CombatParticipantState } from './combat';
 
-export interface FightAttributes {
-  power: number;
-  // Could include other derived attributes relevant to a fight, e.g., defense, agility
+// Describes the state of a participant within a fight session
+export interface FightParticipantSessionState {
+  stoneId: number;
+  combatState: CombatParticipantState; // Holds all dynamic combat values
 }
 
-export interface FightParticipant {
-  stone: StoneQualities;
-  attributes: FightAttributes; // Effective attributes after any pre-fight calculations or variance
+// Overall state of the current fight
+export interface FightSession {
+  sessionId: string; // Unique ID for this fight
+  player: FightParticipantSessionState;
+  opponent: FightParticipantSessionState;
+  currentRound: number;
+  isFightOver: boolean;
+  winner?: 'player' | 'opponent' | 'tie'; // Set when fight is over
+  log: string[]; // Log of actions and events during the fight
 }
 
+// Information provided at the start of a new round, including cards for choice
+export interface NewRoundInfo {
+  roundNumber: number;
+  cardsForChoice: Card[]; // Typically 3 cards
+  playerHealth: number;
+  opponentHealth: number;
+}
+
+// Outcome of playing a card
+export interface CardPlayOutcome {
+  success: boolean;
+  message: string;
+  updatedPlayerState?: CombatParticipantState;
+  updatedOpponentState?: CombatParticipantState;
+  activeEffectsPlayer: ActiveEffect[];
+}
+
+// Outcome of a single combat round's resolution
+export interface RoundResolutionOutcome {
+  roundNumber: number;
+  playerDamageDealt?: number;
+  opponentDamageDealt?: number;
+  playerHealth: number;
+  opponentHealth: number;
+  roundWinner?: 'player' | 'opponent' | 'tie' | 'ongoing';
+  logEntry: string; // Summary of the round
+  activeEffectsPlayer: ActiveEffect[];
+}
+
+// Final outcome of the entire fight
 export interface FightOutcome {
-  player: FightParticipant;
-  opponent: FightParticipant;
+  playerStoneId: number;
+  opponentStoneId: number;
   winner: 'player' | 'opponent' | 'tie';
-  currencyChange?: number;    // e.g., +10 for win, 0 for loss/tie
-  stoneLostByPlayer?: boolean;  // True if player's stone was lost
-  newStoneGainedByPlayer?: StoneQualities; // If player wins a new stone
-  logMessage: string; // A descriptive message of the fight's key events and outcome
+  log: string[];
+  currencyChange?: number;
+  stoneLostByPlayer?: boolean;
+  newStoneGainedByPlayer?: StoneQualities;
 }
+
 
 export interface IFightService {
-  /**
-   * Calculates the power and other fight-relevant attributes of a stone.
-   * @param stone The stone for which to calculate attributes.
-   * @returns The fight attributes.
-   */
-  calculateFightAttributes(stone: StoneQualities): FightAttributes;
-
-  /**
-   * Executes a fight between a player's stone and an opponent's stone.
-   * This method should incorporate randomness for power variance.
-   * @param playerStone The player's StoneQualities.
-   * @param opponentStone The opponent's StoneQualities.
-   * @param randomService An instance of IRandomService to ensure deterministic randomness if needed.
-   * @returns A FightOutcome object detailing the result of the fight.
-   */
-  executeFight(
-    playerStone: StoneQualities,
-    opponentStone: StoneQualities,
-    randomService: import('./randomService').IRandomService // Late import to avoid circular deps if RandomService needs types from here
-  ): FightOutcome;
+  startFight(playerStoneId: number, opponentStone: StoneQualities): Promise<FightSession>;
+  getCurrentFightSession(): Promise<FightSession | null>;
+  startNewRound(): Promise<NewRoundInfo>;
+  playerSelectsCard(chosenCardId: string, discardedCardIds: string[]): Promise<FightSession>;
+  playerPlaysCard(cardId: string, targetId: 'player' | 'opponent'): Promise<CardPlayOutcome>;
+  resolveCurrentRound(): Promise<RoundResolutionOutcome>;
+  endFight(): Promise<FightOutcome | null>;
 }
