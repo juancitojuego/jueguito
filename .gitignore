@@ -1,3 +1,4 @@
+
 # Dependencies
 node_modules/
 
@@ -13,3 +14,4 @@ dist/
 # but good to ignore any local test copies.
 stone-crafter.json
 .stone-crafter.json
+coverage/
