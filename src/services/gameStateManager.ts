@@ -1,24 +1,23 @@
 // src/services/gameStateManager.ts
-
+import seedrandom from 'seedrandom'; // Ensure seedrandom is imported
 import type {
   IGameStateManager,
   GameState,
-  PlayerStats,
   GameStateListener,
 } from '../interfaces/gameStateManager';
 import type { StoneQualities } from '../interfaces/stone';
 import type { IRandomService } from '../interfaces/randomService';
 import { createStone, generateNewStoneSeed } from '../stone';
-import seedrandom from 'seedrandom'; // Import seedrandom
 // Import a function to get a default structure, which will be adapted.
 // The existing getDefaultSaveData from src/store.ts returns SaveData, not GameState.
 // We'll define a new default GameState structure here or adapt.
+import type { Card } from '../interfaces/card'; // Import Card
+import type { ActiveEffect } from '../interfaces/activeEffect'; // Import ActiveEffect
+import { getPredefinedCards } from '../config/cards'; // Import card definitions
 
-const LOCAL_STORAGE_KEY = 'stoneCrafterGameState'; // New key for this manager
+const LOCAL_STORAGE_KEY = 'stoneCrafterGameState';
 
 function getInitialGameState(): GameState {
-  // This function provides the very initial, empty state structure.
-  // loadGame or resetGameDefaults will populate it properly.
   return {
     gameSeed: null,
     playerStats: { name: '' },
@@ -27,6 +26,11 @@ function getInitialGameState(): GameState {
     equippedStoneId: null,
     opponentsSeed: null,
     opponents_index: 0,
+    // Initialize new card game properties
+    deck: [],
+    hand: [],
+    discardPile: [],
+    playerActiveCombatEffects: [],
   };
 }
 
@@ -70,12 +74,87 @@ export class GameStateManager implements IGameStateManager {
     };
   }
 
+  // --- Deck, Hand, Discard Management ---
+
+  public generateDeck(): void {
+    const cards = getPredefinedCards();
+    this.state.deck = this.randomService.shuffleArray(cards);
+    this.state.discardPile = [];
+    this.state.hand = [];
+    console.log(`Generated and shuffled a new deck with ${this.state.deck.length} cards.`);
+    this.notifyListeners();
+  }
+
+  public drawCardsFromDeck(count: number): Card[] {
+    const drawnCards: Card[] = [];
+    for (let i = 0; i < count; i++) {
+      if (this.state.deck.length === 0) {
+        if (this.state.discardPile.length === 0) {
+          console.log('Deck and discard pile are empty. No cards to draw.');
+          break;
+        }
+        console.log('Deck empty, shuffling discard pile into deck.');
+        this.state.deck = this.randomService.shuffleArray([...this.state.discardPile]);
+        this.state.discardPile = [];
+        if (this.state.deck.length === 0) {
+           console.log('No cards available to draw even after reshuffle.');
+           break;
+        }
+      }
+      const card = this.state.deck.shift();
+      if (card) {
+        drawnCards.push(card);
+      }
+    }
+    this.notifyListeners();
+    return drawnCards;
+  }
+
+  public addCardsToHand(cards: Card[]): void {
+    this.state.hand.push(...cards);
+    this.notifyListeners();
+  }
+
+  public removeCardFromHand(cardId: string): Card | undefined {
+    const cardIndex = this.state.hand.findIndex(c => c.id === cardId);
+    if (cardIndex > -1) {
+      const card = this.state.hand.splice(cardIndex, 1)[0];
+      this.notifyListeners();
+      return card;
+    }
+    return undefined;
+  }
+
+  public addCardsToDiscardPile(cards: Card[]): void {
+    this.state.discardPile.push(...cards);
+    this.notifyListeners();
+  }
+
+  // --- Active Combat Effects Management ---
+
+  public addPlayerActiveCombatEffect(effect: ActiveEffect): void {
+    this.state.playerActiveCombatEffects.push(effect);
+    this.notifyListeners();
+  }
+
+  public removePlayerActiveCombatEffect(effectId: string): void {
+    this.state.playerActiveCombatEffects = this.state.playerActiveCombatEffects.filter(e => e.id !== effectId);
+    this.notifyListeners();
+  }
+
+  public updatePlayerActiveCombatEffects(effects: ActiveEffect[]): void {
+    this.state.playerActiveCombatEffects = effects;
+    this.notifyListeners();
+  }
+
+  // --- Existing IGameStateManager Implementation ---
+
   public async loadGame(options?: { newGameSeed?: number; playerName?: string }): Promise<GameState> {
     if (options?.newGameSeed !== undefined) {
       // Start a new game if newGameSeed is explicitly provided
       const playerName = options.playerName || 'Player';
       this.resetGameDefaults({ newGameSeed: options.newGameSeed, playerName });
-      // resetGameDefaults calls notifyListeners and returns state
+      // generateDeck() is called within resetGameDefaults
       return this.getCurrentState();
     }
 
@@ -83,29 +162,36 @@ export class GameStateManager implements IGameStateManager {
     if (savedData) {
       try {
         const parsedState = JSON.parse(savedData) as GameState;
-        // Basic validation/migration could happen here
-        this.state = { ...getInitialGameState(), ...parsedState }; // Merge to ensure all keys
-        if (this.state.gameSeed === null) { // Should not happen if saved correctly
+        this.state = { ...getInitialGameState(), ...parsedState };
+        if (this.state.gameSeed === null) {
             throw new Error("Loaded game state has null gameSeed.");
         }
         this.randomService.initialize(this.state.gameSeed);
         if (this.state.opponentsSeed === null) {
             this.state.opponentsSeed = this.randomService.generateSeed();
         }
-        this.generateNewOpponentQueue(100); // Default count
+        this.state.deck = this.state.deck || [];
+        this.state.hand = this.state.hand || [];
+        this.state.discardPile = this.state.discardPile || [];
+        this.state.playerActiveCombatEffects = this.state.playerActiveCombatEffects || [];
+
+        if (this.state.deck.length === 0 && this.state.hand.length === 0 && this.state.discardPile.length === 0) {
+            this.generateDeck();
+        }
+
+        this.generateNewOpponentQueue(100);
         this.notifyListeners();
         console.log('Game state loaded from localStorage.');
         return this.getCurrentState();
       } catch (error) {
         console.error('Failed to parse saved game data, starting new game:', error);
-        // Fall through to new game creation
       }
     }
     
-    // Default new game if no save data and no specific newGameSeed given
-    const newGameSeed = this.randomService.generateSeed(); // Generate a random seed
+    const newGameSeed = this.randomService.generateSeed();
     const playerName = options?.playerName || 'New Player';
     this.resetGameDefaults({ newGameSeed, playerName });
+    // generateDeck() is called within resetGameDefaults
     return this.getCurrentState();
   }
 
@@ -130,20 +216,23 @@ export class GameStateManager implements IGameStateManager {
       equippedStoneId: null,
       opponentsSeed: this.randomService.generateSeed(), // Use main PRNG to generate a distinct seed for opponents
       opponents_index: 0,
+      // Ensure new properties are initialized in reset as well
+      deck: [],
+      hand: [],
+      discardPile: [],
+      playerActiveCombatEffects: [],
     };
     
     // Generate first stone
     const firstStoneSeed = generateNewStoneSeed(() => this.randomService.getRandom());
     const firstStone = createStone(firstStoneSeed);
-    this.addStoneToInventory(firstStone); // This will call notifyListeners
-    this.equipStone(firstStone.seed);    // This will call notifyListeners again
+    this.addStoneToInventory(firstStone);
+    this.equipStone(firstStone.seed);
 
-    this.generateNewOpponentQueue(100); // Default opponent count
+    this.generateDeck(); // Generate and shuffle the initial deck
+    this.generateNewOpponentQueue(100);
 
     console.log(`Game reset with new seed: ${options.newGameSeed}`);
-    // notifyListeners is called by addStone and equipStone, but a final one ensures overall state.
-    // However, to avoid redundant notifications, manage it carefully.
-    // For simplicity here, let the last action (generateNewOpponentQueue or explicit call) handle it.
     this.notifyListeners(); 
     return this.getCurrentState();
   }
@@ -193,7 +282,7 @@ export class GameStateManager implements IGameStateManager {
     }
     // Use a separate PRNG instance for opponent generation, seeded by opponentsSeed
     // This keeps opponent generation deterministic and separate from gameSeed's PRNG usage.
-    const opponentPrng = seedrandom(this.state.opponentsSeed.toString());
+    const opponentPrng = seedrandom(this.state.opponentsSeed.toString()); // Make sure seedrandom is available
 
     this.opponentQueue = [];
     for (let i = 0; i < count; i++) {

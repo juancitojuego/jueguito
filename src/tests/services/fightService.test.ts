@@ -1,50 +1,78 @@
 // src/tests/services/fightService.test.ts
-
 import { FightService } from '../../services/fightService';
-import type { StoneQualities, IRandomService, FightOutcome } from '../../interfaces';
-import { createStone, generateNewStoneSeed } from '../../stone'; // For actual stone creation if needed for newStoneGainedByPlayer
+import type { IGameStateManager } from '../../interfaces/gameStateManager';
+import type { IRandomService } from '../../interfaces/randomService';
+import type { StoneQualities } from '../../interfaces/stone';
+import { createInitialCombatParticipantState } from '../../interfaces/combat';
+import type { Card, Effect } from '../../interfaces/card';
+import { CardType } from '../../interfaces/card';
+import type { ActiveEffect } from '../../interfaces/activeEffect';
+import { PREDEFINED_CARDS as ACTUAL_PREDEFINED_CARDS } from '../../config/cards'; // For realistic card effects
 
-// Mock IRandomService
-const mockRandomService: jest.Mocked<IRandomService> = {
-  initialize: jest.fn(),
-  getRandom: jest.fn(),
-  generateSeed: jest.fn(),
-  shuffleArray: jest.fn(),
-  // getPrng: jest.fn(), // Not added to IRandomService in the end
+// Mocks
+const mockGameStateManager: jest.Mocked<IGameStateManager> = {
+  getCurrentState: jest.fn(),
+  subscribe: jest.fn(),
+  loadGame: jest.fn(),
+  saveGame: jest.fn(),
+  resetGameDefaults: jest.fn(),
+  setPlayerName: jest.fn(),
+  updateCurrency: jest.fn(),
+  addStoneToInventory: jest.fn(),
+  removeStoneFromInventory: jest.fn(),
+  equipStone: jest.fn(),
+  generateNewOpponentQueue: jest.fn(),
+  getCurrentOpponent: jest.fn(),
+  advanceOpponent: jest.fn(),
+  getEquippedStoneDetails: jest.fn(),
+  getStoneById: jest.fn(),
+  generateDeck: jest.fn(),
+  drawCardsFromDeck: jest.fn(),
+  addCardsToHand: jest.fn(),
+  removeCardFromHand: jest.fn(),
+  addCardsToDiscardPile: jest.fn(),
+  addPlayerActiveCombatEffect: jest.fn(),
+  removePlayerActiveCombatEffect: jest.fn(),
+  updatePlayerActiveCombatEffects: jest.fn(),
 };
 
-// Helper to create mock StoneQualities for tests
-// This ensures we have full StoneQualities objects as inputs.
-// calculateStonePower (imported by FightService from ../stone) will use these.
-const createTestStone = (seed: number, powerAttributes: { 
-  rarity: number, hardness: number, magic: number, weight: number 
-}, name?: string): StoneQualities => ({
-  seed,
-  color: 'TestColor',
-  shape: 'TestShape',
-  rarity: powerAttributes.rarity,
-  hardness: powerAttributes.hardness,
-  magic: powerAttributes.magic,
-  weight: powerAttributes.weight,
-  createdAt: Date.now(),
-  name: name || `Stone ${seed}`,
-});
+const mockRandomService: jest.Mocked<IRandomService> = {
+  initialize: jest.fn(),
+  getRandom: jest.fn(() => 0.5),
+  generateSeed: jest.fn(() => Date.now()), // Unique seed for sessions
+  shuffleArray: jest.fn(arr => arr),
+};
 
+// Test data
+const testPlayerStone: StoneQualities = { seed: 1, color: 'Red', shape: 'Cube', rarity: 50, hardness: 0.5, weight: 10, magic: 20, createdAt: 1, name: 'PlayerStone' };
+const testOpponentStone: StoneQualities = { seed: 2, color: 'Blue', shape: 'Sphere', rarity: 60, hardness: 0.6, weight: 12, magic: 25, createdAt: 2, name: 'OpponentStone' };
+
+// Use a subset of actual predefined cards for testing specific effects
+const powerBoostCard = ACTUAL_PREDEFINED_CARDS.find(c => c.id === 'C_POWER_BOOST_1')!;
+const defenseBoostCard = ACTUAL_PREDEFINED_CARDS.find(c => c.id === 'C_DEFENSE_BOOST_1')!;
+const healingCard = ACTUAL_PREDEFINED_CARDS.find(c => c.id === 'C_INSTANT_HEAL_1')!;
 
 describe('FightService', () => {
   let fightService: FightService;
-  // Define base stones at a higher scope
-  const playerStoneBase = createTestStone(1, { rarity: 50, hardness: 0.5, magic: 50, weight: 50 });
-  const opponentStoneBase = createTestStone(2, { rarity: 40, hardness: 0.4, magic: 40, weight: 40 });
+  let currentGameStateEffects: ActiveEffect[];
 
   beforeEach(() => {
-    // Reset all mock implementations and call counts before each test
-    mockRandomService.getRandom.mockReset();
-    mockRandomService.generateSeed.mockReset();
-    
-    fightService = new FightService(mockRandomService);
+    jest.clearAllMocks();
+    currentGameStateEffects = [];
+    mockGameStateManager.getStoneById.mockImplementation(id => (id === testPlayerStone.seed ? testPlayerStone : null));
+    mockGameStateManager.getCurrentState.mockReturnValue({
+      // Provide a bare minimum GameState that FightService might interact with
+      playerActiveCombatEffects: currentGameStateEffects,
+      // ... other properties can be default/empty for many tests
+    } as any);
+    mockGameStateManager.updatePlayerActiveCombatEffects.mockImplementation((effects) => {
+      currentGameStateEffects = effects; // Simulate update
+    });
+
+    fightService = new FightService(mockGameStateManager, mockRandomService);
   });
 
+<<<<<<< HEAD
   describe('executeFight', () => {
     // playerStoneBase and opponentStoneBase are now accessible here
 
@@ -156,47 +184,137 @@ describe('FightService', () => {
       expect(outcome.logMessage).toContain("It's a tie.");
       // Times called: PlayerVar, OpponentVar. No loss/gain checks for tie.
       expect(mockRandomService.getRandom).toHaveBeenCalledTimes(2); 
+=======
+  describe('startFight', () => {
+    it('should initialize a fight session correctly', async () => {
+      const session = await fightService.startFight(testPlayerStone.seed, testOpponentStone);
+      expect(session).toBeDefined();
+      expect(session.player.stoneId).toBe(testPlayerStone.seed);
+      expect(session.opponent.stoneId).toBe(testOpponentStone.seed);
+      expect(session.currentRound).toBe(0);
+      expect(session.isFightOver).toBe(false);
+      expect(mockGameStateManager.updatePlayerActiveCombatEffects).toHaveBeenCalledWith([]); // Clears old effects
+>>>>>>> 5b3a217ad9efa2e08549371d8bcd692fd0158007
     });
   });
 
-  describe('calculateFightAttributes (tested via executeFight outcomes)', () => {
-    const stone = createTestStone(100, { rarity: 10, hardness: 0.1, magic: 10, weight: 10 });
-    // Base power for this stone: (10*0.4) + (0.1*30) + (10*0.3) + (10*0.1) = 4 + 3 + 3 + 1 = 11
+  describe('Round Workflow', () => {
+    let initialCardsForChoice: Card[];
 
-    test('should apply minimum variance (-15%)', () => {
-      // To get -15% variance, getRandom() should be close to 0.
-      // variance = getRandom() * 0.3 - 0.15. If getRandom() = 0, variance = -0.15.
-      mockRandomService.getRandom.mockReturnValue(0); 
-      const attributes = fightService.calculateFightAttributes(stone);
-      expect(attributes.power).toBeCloseTo(11 * 0.85); // 9.35
+    beforeEach(async () => {
+      await fightService.startFight(testPlayerStone.seed, testOpponentStone);
+      initialCardsForChoice = [
+        { ...powerBoostCard, id: 'choice1' },
+        { ...defenseBoostCard, id: 'choice2' },
+        { ...healingCard, id: 'choice3' }
+      ];
+      mockGameStateManager.drawCardsFromDeck.mockReturnValue([...initialCardsForChoice]); // Provide copies
     });
 
-    test('should apply maximum variance (+15%)', () => {
-      // To get +15% variance, getRandom() should be close to 1.
-      // If getRandom() = 0.999..., variance = 0.999... * 0.3 - 0.15 approx 0.3 - 0.15 = 0.15
-      mockRandomService.getRandom.mockReturnValue(0.999999999); 
-      const attributes = fightService.calculateFightAttributes(stone);
-      expect(attributes.power).toBeCloseTo(11 * 1.15); // 12.65
+    it('startNewRound should provide cards for choice and update round number', async () => {
+      const newRoundInfo = await fightService.startNewRound();
+      expect(newRoundInfo.roundNumber).toBe(1);
+      expect(newRoundInfo.cardsForChoice.length).toBe(3);
+      expect(mockGameStateManager.drawCardsFromDeck).toHaveBeenCalledWith(3);
+      const session = await fightService.getCurrentFightSession();
+      expect(session?.currentRound).toBe(1);
     });
 
-    test('should apply zero variance (approx 0%)', () => {
-      // To get 0% variance, getRandom() should be 0.5.
-      // variance = 0.5 * 0.3 - 0.15 = 0.15 - 0.15 = 0.
-      mockRandomService.getRandom.mockReturnValue(0.5); 
-      const attributes = fightService.calculateFightAttributes(stone);
-      expect(attributes.power).toBeCloseTo(11); // 11
-    });
-  });
-
-  describe('Log Message Content', () => {
-    test('log message should contain player and opponent powers', () => {
-      mockRandomService.getRandom.mockReturnValue(0.5); // No variance
-      const outcome = fightService.executeFight(playerStoneBase, opponentStoneBase);
+    it('playerSelectsCard should update hand and discard pile via GameStateManager', async () => {
+      await fightService.startNewRound();
+      const chosen = initialCardsForChoice[0];
+      const discarded = [initialCardsForChoice[1], initialCardsForChoice[2]];
       
-      // Base powers: Player 55, Opponent 44. With 0% variance.
-      expect(outcome.logMessage).toMatch(/Player \(Stone 1, P: 55.00\)/);
-      expect(outcome.logMessage).toMatch(/Opponent \(Stone 2, P: 44.00\)/);
-      expect(outcome.logMessage).toContain('Player wins!');
+      await fightService.playerSelectsCard(chosen.id, discarded.map(c => c.id));
+
+      expect(mockGameStateManager.addCardsToHand).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({id: chosen.id})]));
+      expect(mockGameStateManager.addCardsToDiscardPile).toHaveBeenCalledWith(expect.arrayContaining(discarded.map(c => expect.objectContaining({id: c.id}))));
+    });
+
+    it('playerPlaysCard should apply effect and update states', async () => {
+      // Setup: Start round, select powerBoostCard into hand
+      await fightService.startNewRound();
+      mockGameStateManager.removeCardFromHand.mockReturnValue(powerBoostCard); // Simulate card being in hand
+      mockGameStateManager.getCurrentState.mockReturnValue({ playerActiveCombatEffects: [] } as any);
+
+      const outcome = await fightService.playerPlaysCard(powerBoostCard.id, 'player');
+      expect(outcome.success).toBe(true);
+      expect(mockGameStateManager.removeCardFromHand).toHaveBeenCalledWith(powerBoostCard.id);
+      expect(mockGameStateManager.addCardsToDiscardPile).toHaveBeenCalledWith([powerBoostCard]);
+      // Check that updatePlayerActiveCombatEffects was called with the new effect
+      expect(mockGameStateManager.updatePlayerActiveCombatEffects).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ name: 'Minor Power Boost', powerBoost: 5 })])
+      );
+      const session = await fightService.getCurrentFightSession();
+      // Player's currentPower should be basePower + boost
+      const basePlayerPower = createInitialCombatParticipantState(testPlayerStone).basePower;
+      expect(session?.player.combatState.currentPower).toBe(basePlayerPower + 5);
+    });
+
+    it('resolveCurrentRound should calculate damage and update health', async () => {
+      await fightService.startFight(testPlayerStone.seed, testOpponentStone);
+      await fightService.startNewRound();
+      // Simulate player playing a power boost card
+      mockGameStateManager.removeCardFromHand.mockReturnValue(powerBoostCard);
+      currentGameStateEffects = []; // Reset for this test case
+      mockGameStateManager.getCurrentState.mockReturnValue({ playerActiveCombatEffects: currentGameStateEffects } as any);
+      await fightService.playerPlaysCard(powerBoostCard.id, 'player');
+
+      const playerInitialHealth = (await fightService.getCurrentFightSession())!.player.combatState.maxHealth;
+      const opponentInitialHealth = (await fightService.getCurrentFightSession())!.opponent.combatState.maxHealth;
+
+      const resolution = await fightService.resolveCurrentRound();
+
+      expect(resolution.playerDamageDealt).toBeGreaterThanOrEqual(0);
+      expect(resolution.opponentDamageDealt).toBeGreaterThanOrEqual(0);
+
+      const session = await fightService.getCurrentFightSession();
+      expect(session!.player.combatState.currentHealth).toBeLessThanOrEqual(playerInitialHealth);
+      expect(session!.opponent.combatState.currentHealth).toBeLessThanOrEqual(opponentInitialHealth);
+      // Check effect duration update
+      const playerEffectsAfterRound = mockGameStateManager.getCurrentState().playerActiveCombatEffects;
+      const powerBoostEffect = playerEffectsAfterRound.find(e => e.name === 'Minor Power Boost');
+      expect(powerBoostEffect?.remainingDuration).toBe(1); // Was 2, now 1
+    });
+
+    it('resolveCurrentRound should end fight if health reaches zero', async () => {
+        await fightService.startFight(testPlayerStone.seed, testOpponentStone);
+        const session = await fightService.getCurrentFightSession();
+        // Manually set opponent health low for testing ko
+        if(session) session.opponent.combatState.currentHealth = 1;
+
+        await fightService.startNewRound();
+        // Assume player has a strong card or high base power
+        // For simplicity, we don't play a card, just rely on base power difference
+        // or ensure applyActiveEffectsToParticipant gives player enough power
+
+        const resolution = await fightService.resolveCurrentRound();
+        expect(resolution.roundWinner).toBe('player'); // Assuming player KO's opponent
+        const finalSession = await fightService.getCurrentFightSession();
+        expect(finalSession!.isFightOver).toBe(true);
+        expect(finalSession!.winner).toBe('player');
+    });
+  });
+
+  describe('endFight', () => {
+    it('should return FightOutcome and clear session, applying rewards/penalties', async () => {
+      await fightService.startFight(testPlayerStone.seed, testOpponentStone);
+      const session = await fightService.getCurrentFightSession();
+      // Simulate fight ending
+      if(session) {
+        session.isFightOver = true;
+        session.winner = 'player';
+      }
+      mockRandomService.getRandom.mockReturnValue(0.05); // Ensure new stone gain
+
+      const outcome = await fightService.endFight();
+      expect(outcome).toBeDefined();
+      expect(outcome!.winner).toBe('player');
+      expect(outcome!.currencyChange).toBe(10);
+      expect(outcome!.newStoneGainedByPlayer).toBeDefined();
+      expect(mockGameStateManager.updateCurrency).toHaveBeenCalledWith(10);
+      expect(mockGameStateManager.addStoneToInventory).toHaveBeenCalled();
+      expect(await fightService.getCurrentFightSession()).toBeNull(); // Session cleared
     });
   });
 });

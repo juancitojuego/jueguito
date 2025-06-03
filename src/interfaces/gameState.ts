@@ -1,27 +1,27 @@
 // src/interfaces/gameState.ts
 import type { StoneQualities } from './stone';
+import type { Card } from './card'; // Import Card
+import type { ActiveEffect } from './activeEffect'; // Import ActiveEffect
 
 export interface PlayerStats {
-  name: string; // Player name
-  // Potentially other stats like wins, losses, etc., if not top-level in GameState
+  name: string;
 }
 
 export interface GameState {
   gameSeed: number | null;
   playerStats: PlayerStats;
   currency: number;
-  stones: StoneQualities[]; // Player's inventory of stones
-  equippedStoneId: number | null; // Seed of the equipped stone, or null if none
+  stones: StoneQualities[];
+  equippedStoneId: number | null;
   
-  // Opponent-related state.
-  // Consider if opponent queue/details should be part of GameState or managed externally
-  // and only the current opponent or progress is stored.
-  // For simplicity in this definition, storing index and seed for regeneration.
-  opponentsSeed: number | null; // Seed used to generate the current opponent queue
-  opponents_index: number;     // Current position in the opponent queue
+  opponentsSeed: number | null;
+  opponents_index: number;
 
-  // Could also include things like:
-  // gameVersion: string;
-  // lastPlayed: number; // Timestamp
-  // settings: GameSettings;
+  // New properties for card game mechanics
+  deck: Card[];
+  hand: Card[];
+  discardPile: Card[];
+
+  // Active effects on the player's stone during combat.
+  playerActiveCombatEffects: ActiveEffect[];
 }
