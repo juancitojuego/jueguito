@@ -7,20 +7,31 @@ import {
     getCurrentFightSession,
     clearCurrentFightSession,
     startNewRound,
-    playerSelectsCard // Import new function
+    playerSelectsCard,
+    playerPlaysCard,
+    resolveCurrentRound,
+    endFight
 } from './fight_service';
-import { FightSessionData, NewRoundInfo, Card, ActiveEffect } from './combat_interfaces';
+import {
+    FightSessionData,
+    NewRoundInfo,
+    Card,
+    TargetType,
+    CardPlayOutcome,
+    RoundResolutionOutcome,
+    FightOutcome,
+    ActiveEffect,
+    CombatParticipantState
+} from './combat_interfaces';
 
 function displayStoneDetails(stone: StoneQualities | null, label: string): void {
     console.log(`--- ${label} ---`);
     if (stone) {
         console.log(`  Name: ${stone.name}`);
         console.log(`  Seed: ${stone.seed}`);
-        console.log(`  Weight: ${stone.weight}`);
-        console.log(`  Rarity: ${stone.rarity}`);
-        console.log(`  Magic: ${stone.magic}`);
-        // console.log(`  Created At: ${new Date(stone.createdAt).toLocaleString()}`);
+        console.log(`  Rarity: ${stone.rarity}, Magic: ${stone.magic}, Weight: ${stone.weight}`);
         console.log(`  Power: ${calculateStonePower(stone).toFixed(2)}`);
+        // console.log(`  Created At: ${new Date(stone.createdAt).toLocaleString()}`);
     } else {
         console.log("  No stone to display.");
     }
@@ -37,35 +48,38 @@ function listInventory(gameState: GameState): void {
     }
 }
 
-function displayFightSession(session: FightSessionData | null): void {
+function displayParticipantState(label: string, participantState: CombatParticipantState | undefined, activeEffectsSource?: ReadonlyArray<ActiveEffect>) {
+    if (!participantState) {
+        console.log(`  ${label}: State not available.`);
+        return;
+    }
+    console.log(`  ${label} (Stone: ${participantState.baseStone.name}):`);
+    console.log(`    Health: ${participantState.currentHealth.toFixed(0)}/${participantState.maxHealth.toFixed(0)}`);
+    console.log(`    Power: ${participantState.currentPower.toFixed(2)} (Base: ${participantState.basePower.toFixed(2)})`);
+    console.log(`    Defense: ${participantState.currentDefense.toFixed(2)} (Base: ${participantState.baseDefense.toFixed(2)})`);
+
+    const effectsToDisplay = activeEffectsSource || participantState.activeEffects;
+    if (effectsToDisplay.length > 0) {
+        console.log("    Active Effects:");
+        effectsToDisplay.forEach(eff => console.log(`      - ${eff.name} (Desc: ${eff.description}), Duration: ${eff.remainingDuration}`));
+    }
+}
+
+function displayFightSession(session: FightSessionData | null, gameState?: GameState): void {
     console.log("\n--- Current Fight Session ---");
     if (session) {
         console.log(`  Session ID: ${session.sessionId}`);
         console.log(`  Round: ${session.currentRound}`);
         console.log(`  Fight Over: ${session.isFightOver}`);
-        console.log("  Player:");
-        console.log(`    Stone: ${session.playerState.baseStone.name}`);
-        console.log(`    Health: ${session.playerState.currentHealth.toFixed(0)}/${session.playerState.maxHealth.toFixed(0)}`);
-        console.log(`    Power: ${session.playerState.currentPower.toFixed(2)} (Base: ${session.playerState.basePower.toFixed(2)})`);
-        console.log(`    Defense: ${session.playerState.currentDefense.toFixed(2)} (Base: ${session.playerState.baseDefense.toFixed(2)})`);
-        if(session.playerState.activeEffects.length > 0) {
-            console.log(`    Active Effects: ${session.playerState.activeEffects.map(e => `${e.name}(${e.remainingDuration})`).join(', ')}`);
-        }
-        console.log("  Opponent:");
-        console.log(`    Stone: ${session.opponentState.baseStone.name}`);
-        console.log(`    Health: ${session.opponentState.currentHealth.toFixed(0)}/${session.opponentState.maxHealth.toFixed(0)}`);
-        console.log(`    Power: ${session.opponentState.currentPower.toFixed(2)} (Base: ${session.opponentState.basePower.toFixed(2)})`);
-        console.log(`    Defense: ${session.opponentState.currentDefense.toFixed(2)} (Base: ${session.opponentState.baseDefense.toFixed(2)})`);
-        if(session.opponentState.activeEffects.length > 0) {
-            console.log(`    Active Effects: ${session.opponentState.activeEffects.map(e => `${e.name}(${e.remainingDuration})`).join(', ')}`);
-        }
+        displayParticipantState("Player", session.playerState, gameState?.playerActiveCombatEffects); // Pass gameState for player effects
+        displayParticipantState("Opponent", session.opponentState, session.opponentState.activeEffects); // Opponent effects are on their state
 
         if (session.currentRoundChoices && session.currentRoundChoices.length > 0) {
             console.log("  Cards for Choice (Player):");
             session.currentRoundChoices.forEach(card => console.log(`    - ${card.name} (ID: ${card.id}, Type: ${card.type})`));
         }
         if (session.fightLog.length > 0) {
-            console.log("  Recent Fight Log:");
+            console.log("  Fight Log (Last 5 entries):");
             session.fightLog.slice(-5).forEach(entry => console.log(`    - ${entry}`));
         }
     } else {
@@ -85,87 +99,166 @@ function displayNewRoundInfo(newRoundInfo: NewRoundInfo | null): void {
                 console.log(`    - ${card.name} (ID: ${card.id}, Type: ${card.type}, Desc: ${card.description})`);
             });
         } else {
-            console.log("    No cards offered for choice (deck potentially empty).");
+            console.log("    No cards offered for choice (deck empty?).");
         }
     } else {
-        console.log("  Could not start a new round (or fight is over).");
+        console.log("  Could not start a new round.");
     }
 }
 
 function displayPlayerHandAndDiscard(gameState: GameState): void {
     console.log("\n--- Player Card State ---");
-    console.log(`  Hand (${gameState.hand.length} cards): ${gameState.hand.map(c => c.name).join(', ') || 'Empty'}`);
+    console.log(`  Hand (${gameState.hand.length} cards): ${gameState.hand.map(c => `${c.name} (ID: ${c.id})`).join(', ') || 'Empty'}`);
     console.log(`  Discard Pile (${gameState.discardPile.length} cards): ${gameState.discardPile.map(c => c.name).join(', ') || 'Empty'}`);
+    console.log(`  Deck (${gameState.deck.length} cards remaining)`);
 }
 
+
+// Placeholder card effect implementations for demo
+// These would normally be part of the card definition in src/config/cards.ts
+const placeholderCardEffects: Record<string, (target: CombatParticipantState, existingEffects: ReadonlyArray<ActiveEffect>) => ActiveEffect[]> = {
+    default: (target, existingEffects) => { // Default effect if specific one not found
+        console.warn(`Using default placeholder effect for a card.`);
+        return [...existingEffects]; // Return existing effects unchanged
+    },
+    power_boost_sml: (target, existingEffects) => {
+        const newEffect: ActiveEffect = {
+            id: `eff_pbs_${Date.now()}`, name: "Minor Power Boost", description: "+5 Power for 2 rounds",
+            remainingDuration: 3, powerBoost: 5, sourceCardId: 'card_001' // Duration 3 so it lasts 2 full rounds after this one
+        };
+        return [...existingEffects, newEffect];
+    },
+    defense_boost_sml: (target, existingEffects) => {
+        const newEffect: ActiveEffect = {
+            id: `eff_dbs_${Date.now()}`, name: "Minor Defense Boost", description: "+5 Defense for 2 rounds",
+            remainingDuration: 3, defenseBoost: 5, sourceCardId: 'card_002'
+        };
+        return [...existingEffects, newEffect];
+    },
+    heal_sml: (target, existingEffects) => {
+        const newEffect: ActiveEffect = {
+            id: `eff_hsl_${Date.now()}`, name: "Small Heal", description: "Heals 10 HP",
+            remainingDuration: 1, healAmount: 10, sourceCardId: 'card_003' // Instant effect, duration 1 to be cleaned up
+        };
+        // Note: applyActiveEffectsToParticipant will handle the actual healing for healAmount effects
+        return [...existingEffects, newEffect];
+    }
+};
+
+function assignPlaceholderEffectsToCards(cards: Card[]): Card[] {
+    return cards.map(card => {
+        let effectLogic = placeholderCardEffects.default;
+        if (card.id === 'card_001') effectLogic = placeholderCardEffects.power_boost_sml;
+        if (card.id === 'card_002') effectLogic = placeholderCardEffects.defense_boost_sml;
+        if (card.id === 'card_003') effectLogic = placeholderCardEffects.heal_sml;
+        // Add more mappings as needed for other predefined cards
+
+        return {
+            ...card,
+            effect: {
+                id: card.id + "_effect", // Effect ID can be derived from card ID
+                description: card.description, // Or a more specific effect description
+                apply: effectLogic
+            }
+        };
+    });
+}
+
+
 function runGameDemo(): void {
-    console.log("Starting Stone Crafter Demo - Player Selects Card...\n");
+    console.log("Starting Stone Crafter Demo - Full Combat Round...\n");
 
     const masterSeed = Date.now();
-    let gameState = GameState.createInitial("CardPlayer", masterSeed);
-    console.log(`Game initialized for player: ${gameState.playerStats.name}. Deck size: ${gameState.deck.length}`);
+    let gameState = GameState.createInitial("CombatPlayerFull", masterSeed);
 
-    let equippedStone = gameState.equippedStoneId ? gameState.getStoneById(gameState.equippedStoneId) : null;
+    // Assign placeholder effects to the cards in the deck
+    gameState.deck = assignPlaceholderEffectsToCards(gameState.deck);
+
+    console.log(`Game initialized for player: ${gameState.playerStats.name}, Currency: ${gameState.currency}`);
+
+    let equippedStone = gameState.getStoneById(gameState.equippedStoneId!); // Should be set by createInitial
     let currentOpponent = gameState.getCurrentOpponent();
 
     displayStoneDetails(equippedStone, "Player's Equipped Stone");
     displayStoneDetails(currentOpponent, "Current Opponent");
+    listInventory(gameState);
+    displayPlayerHandAndDiscard(gameState);
 
     console.log("\n--- Action: Start Fight ---");
     if (equippedStone && currentOpponent) {
         let currentSession = startFight(equippedStone, currentOpponent, gameState);
-        if (currentSession) {
-            console.log(`Fight started!`);
-            // displayFightSession(getCurrentFightSession()); // Initial session state
-
-            // --- Start New Round (Round 1) ---
-            console.log("\n--- Action: Start New Round (Round 1) ---");
-            const round1Info = startNewRound(getCurrentFightSession(), gameState);
-            displayNewRoundInfo(round1Info); // Shows cards for choice
-            // displayFightSession(getCurrentFightSession()); // Shows session with choices populated
-
-            // --- Demonstrate Player Selects Card ---
-            if (round1Info && round1Info.cardsForChoice.length > 0) {
-                const chosenCardFromOptions = round1Info.cardsForChoice[0]; // Simulate choosing the first card
-                console.log(`\n--- Action: Player Selects Card: "${chosenCardFromOptions.name}" ---`);
-
-                const selectionResult = playerSelectsCard(getCurrentFightSession(), gameState, chosenCardFromOptions.id);
-                console.log(selectionResult.message);
-
-                if (selectionResult.success && selectionResult.chosenCard) {
-                    console.log(`  Chosen card '${selectionResult.chosenCard.name}' should now be in hand.`);
-                }
-                displayPlayerHandAndDiscard(gameState); // Show hand and discard pile
-                displayFightSession(getCurrentFightSession()); // Show session after choices are cleared
-            } else {
-                console.log("\nNo cards were available to select for Round 1.");
-            }
-
-            // --- Start New Round (Round 2) to see deck behavior ---
-            console.log("\n--- Action: Start New Round (Round 2) ---");
-            const round2Info = startNewRound(getCurrentFightSession(), gameState);
-            displayNewRoundInfo(round2Info);
-
-            if (round2Info && round2Info.cardsForChoice.length > 0) {
-                const chosenCardR2 = round2Info.cardsForChoice[0];
-                console.log(`\n--- Action: Player Selects Card for Round 2: "${chosenCardR2.name}" ---`);
-                const selectionResultR2 = playerSelectsCard(getCurrentFightSession(), gameState, chosenCardR2.id);
-                console.log(selectionResultR2.message);
-                displayPlayerHandAndDiscard(gameState);
-            } else {
-                 console.log("\nNo cards were available to select for Round 2.");
-            }
-            displayFightSession(getCurrentFightSession());
-
-
-        } else {
+        if (!currentSession) {
             console.log("Could not start fight.");
+            return;
+        }
+        console.log(`Fight started! Session ID: ${currentSession.sessionId}`);
+        displayFightSession(currentSession, gameState);
+
+        for (let i = 0; i < 5 && !currentSession!.isFightOver; i++) {
+            console.log(`\n\n==================== ROUND ${currentSession!.currentRound + 1} ====================`);
+
+            const roundInfo = startNewRound(currentSession, gameState);
+            if (!roundInfo) { console.log("Failed to start new round."); break; }
+            displayNewRoundInfo(roundInfo);
+            displayFightSession(currentSession, gameState);
+
+            if (roundInfo.cardsForChoice.length > 0) {
+                const selectedCard = roundInfo.cardsForChoice[0];
+                console.log(`\n--- Player Action: Selects Card '${selectedCard.name}' ---`);
+                const selectionResult = playerSelectsCard(currentSession, gameState, selectedCard.id);
+                console.log(selectionResult.message);
+                displayPlayerHandAndDiscard(gameState);
+            } else { console.log("\nPlayer has no cards to choose from."); }
+
+            if (gameState.hand.length > 0) {
+                const cardToPlay = gameState.hand[0];
+                const target = (cardToPlay.type === CardType.HEAL || cardToPlay.type.startsWith("BUFF")) ? TargetType.PLAYER : TargetType.OPPONENT;
+                console.log(`\n--- Player Action: Plays Card '${cardToPlay.name}' on ${target} ---`);
+                const playResult = playerPlaysCard(currentSession, gameState, cardToPlay.id, target);
+                console.log(playResult.message);
+                if (playResult.success && playResult.updatedPlayerState && playResult.updatedOpponentState) {
+                    currentSession.playerState = playResult.updatedPlayerState;
+                    currentSession.opponentState = playResult.updatedOpponentState;
+                }
+                displayPlayerHandAndDiscard(gameState);
+                displayFightSession(currentSession, gameState);
+            } else { console.log("\nPlayer has no cards in hand to play."); }
+
+            console.log("\n--- Action: Resolve Current Round --- ");
+            const resolutionOutcome = resolveCurrentRound(currentSession, gameState);
+            if (resolutionOutcome) {
+                console.log(resolutionOutcome.logEntry);
+                displayFightSession(currentSession, gameState);
+                if (resolutionOutcome.isFightOver) {
+                    console.log(`FIGHT OVER! Winner: ${resolutionOutcome.winner || 'None'}`);
+                    const fightOutcome = endFight(currentSession, gameState, resolutionOutcome.winner);
+                    if (fightOutcome) {
+                        console.log("\n--- Fight Outcome ---");
+                        console.log(`  Winner: ${fightOutcome.winner}`);
+                        console.log(`  Currency Change: ${fightOutcome.currencyChange}`);
+                        if (fightOutcome.newStoneGainedByPlayer) {
+                            console.log(`  New Stone Gained: ${fightOutcome.newStoneGainedByPlayer.name}`);
+                        }
+                        if (fightOutcome.stoneLostByPlayer) {
+                            console.log("  Player lost their stone!");
+                        }
+                        console.log("Final Player Currency:", gameState.currency);
+                        listInventory(gameState);
+                    }
+                    gameState.advanceOpponent();
+                    console.log(`Player is now at opponent index: ${gameState.opponents_index}`);
+                    break;
+                }
+            } else { console.log("Could not resolve round."); break; }
+        }
+        if (currentSession && !currentSession.isFightOver){
+             console.log("\nDemo fight ended due to round limit (5 rounds).");
+             clearCurrentFightSession();
         }
     } else {
         console.log("Cannot start fight: Player's equipped stone or opponent missing.");
     }
 
-    clearCurrentFightSession();
     console.log("\n--- Game Demo End ---");
 }
 

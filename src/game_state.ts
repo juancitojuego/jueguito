@@ -97,7 +97,7 @@ export class GameState {
             this.opponentQueue = generateNewOpponentQueue(this.opponentsSeed!, 100);
             this.opponents_index = 0;
         }
-        if (this.opponentQueue.length === 0 || this.opponents_index >= this.opponentQueue.length) { // Check again after potential regeneration
+        if (this.opponentQueue.length === 0 || this.opponents_index >= this.opponentQueue.length) {
             return null;
         }
         return this.opponentQueue[this.opponents_index];
@@ -146,12 +146,23 @@ export class GameState {
 
     public addCardsToHand(cardsToAdd: Card[]): void {
         this.hand.push(...cardsToAdd);
-        // console.log(`[GameState] Added ${cardsToAdd.length} cards to hand. Hand size: ${this.hand.length}`);
     }
 
     public addCardsToDiscardPile(cardsToDiscard: Card[]): void {
         this.discardPile.push(...cardsToDiscard);
-        // console.log(`[GameState] Added ${cardsToDiscard.length} cards to discard pile. Discard pile size: ${this.discardPile.length}`);
+    }
+
+    public updatePlayerActiveCombatEffects(newEffects: ActiveEffect[]): void {
+        this.playerActiveCombatEffects = newEffects;
+    }
+
+    public removeCardFromHand(cardId: string): Card | undefined {
+        const cardIndex = this.hand.findIndex(card => card.id === cardId);
+        if (cardIndex > -1) {
+            const removedCard = this.hand.splice(cardIndex, 1)[0];
+            return removedCard;
+        }
+        return undefined;
     }
 
     public static createInitial(playerName: string, masterSeed: number): GameState {
@@ -167,16 +178,14 @@ export class GameState {
     }
 }
 
-// saveGame and loadGame functions remain unchanged from previous state
 export function saveGame(gameStateInstance: GameState): boolean {
     console.log(`[SaveGame] Player: ${gameStateInstance.playerStats.name}. Attempting to save...`);
     try {
-        const { opponentQueue, ...dataToSave } = gameStateInstance; // opponentQueue is not serialized
+        const { opponentQueue, ...dataToSave } = gameStateInstance;
         const gameStateJson = JSON.stringify(dataToSave);
-        // console.log(`[SaveGame] Placeholder: Game state would be saved (e.g., to localStorage with key '${LOCAL_STORAGE_KEY}').`);
+        console.log(`[SaveGame] Placeholder: Game state would be saved (e.g., to localStorage with key '${LOCAL_STORAGE_KEY}').`);
         return true;
     } catch (error) {
-        // console.error("[SaveGame] Error saving game state:", error);
         return false;
     }
 }
@@ -192,7 +201,6 @@ export function loadGame(): GameState {
             console.log("[LoadGame] Successfully parsed saved data. Player:", loadedData.playerStats.name);
 
             const reconstructedState = new GameState(loadedData.playerStats.name, loadedData.gameSeed);
-
             reconstructedState.currency = loadedData.currency || 0;
 
             if (loadedData.stones && Array.isArray(loadedData.stones)) {
