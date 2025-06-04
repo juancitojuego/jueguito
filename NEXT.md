@@ -1,0 +1,218 @@
+## Stone Mechanics
+
+- **Stone Generation:**
+    - Implement seed-based stone generation using a 32-bit integer seed.
+    - Implement the Mulberry32 PRNG algorithm (`mulberry32(seed)`).
+    - Derive stone qualities (color, shape, weight, rarity, magic) from the seed using the PRNG.
+        - Allocate 8 bits for color.
+        - Allocate 8 bits for shape.
+        - Allocate 8 bits for weight.
+        - Allocate 4 bits for rarity.
+        - Allocate 4 bits for magic.
+    - Implement `generateNewStoneSeed(prng)` using a global/contextual PRNG.
+- **Stone Properties:**
+    - Define the `StoneQualities` object/interface:
+        - `seed` (number)
+        - `name` (string, optional - UI might construct this as "Stone [seed]")
+        - `color` (string from 8-bit value)
+        - `shape` (string from 8-bit value)
+        - `weight` (number from 8-bit value)
+        - `rarity` (number from 4-bit value)
+        - `magic` (number from 4-bit value)
+        - `createdAt` (number, timestamp from `Date.now()`)
+- **Stone Power Calculation:**
+    - Implement `calculateStonePower(stone)` function.
+    - Formula: `(rarity * 0.4) + (magic * 0.3) + (weight * 0.5)`
+- **Special Abilities/Keywords:**
+    - Note: Currently no inherent special abilities on stones. Card system will handle active effects.
+
+## Player and Progression Mechanics
+
+- **Player Stats:**
+    - Define player stats structure (e.g., in `GameState.playerStats`):
+        - `name` (string)
+        - `currency` (number, stored in `GameState.currency`)
+- **Inventory:**
+    - Implement inventory storage for stones (e.g., `GameState.stones` as an array).
+    - Ensure inventory sorts stones by `createdAt` timestamp when new stones are added.
+    - Prevent duplicate stones (by seed) from being added.
+- **Equipping Stones:**
+    - Implement `equippedStoneId` (number | null) in `GameState`.
+    - Logic for equipping a stone from inventory.
+    - Automatic equipping of the first stone in a new game.
+    - Automatic equipping of the next available stone if the equipped stone is removed.
+    - Automatic equipping of the first new stone found via "Crack Open Stone".
+- **Game State: Saving and Loading:**
+    - Define `LOCAL_STORAGE_KEY` (constant, e.g., 'stoneCrafterGameState').
+    - Implement `saveGame()`:
+        - Serialize `GameState` to JSON.
+        - Store in localStorage (or a JSON file).
+    - Implement `loadGame()`:
+        - Retrieve and parse JSON from localStorage (or a JSON file).
+        - If data found:
+            - Restore `GameState`.
+            - Re-initialize main PRNG service (`randomService`) with loaded `gameSeed`.
+            - Re-initialize opponent queue PRNG with `opponentsSeed`.
+            - Restore deck, hand, discard pile (or generate new deck if empty).
+            - Regenerate opponent queue using `opponentsSeed`.
+        - If no data or invalid:
+            - Call `resetGameDefaults()`.
+    - Implement `resetGameDefaults(gameSeed, playerName)`:
+        - Initialize fresh `GameState`.
+        - Set `gameSeed`, `playerName`.
+        - Reset currency, stones, `equippedStoneId`.
+        - Generate new `opponentsSeed`.
+        - Create and equip an initial stone.
+        - Generate a fresh deck of cards.
+        - Generate a new opponent queue.
+- **Opponent System:**
+    - Implement `opponentsSeed` (number | null) in `GameState` for opponent queue generation.
+    - Implement `opponentQueue` (StoneQualities[], regenerated on load/reset, not saved directly).
+    - Implement `opponents_index` (number) in `GameState`.
+    - Implement `generateNewOpponentQueue()` (e.g., in `GameStateManager`):
+        - Generates a list of opponent stones (e.g., 100) using `opponentsSeed`.
+    - Implement `getCurrentOpponent()`:
+        - Retrieves opponent from `opponentQueue` at `opponents_index`.
+        - If index out of bounds or queue exhausted, call `generateNewOpponentQueue()` and reset `opponents_index`.
+    - Implement `advanceOpponent()`:
+        - Increments `opponents_index`.
+
+## Core Player Actions/Verbs
+
+- **Crack Open Stone:**
+    - Implement action (e.g., in main menu).
+    - Requirements: Player must have an equipped stone.
+    - Process:
+        - Identify equipped stone.
+        - Remove equipped stone from inventory (handles unequipping).
+        - Generate new stones:
+            - Always 1 new stone (seed from `generateNewStoneSeed()` with global `randomServiceInstance`).
+            - 10% chance for a second new stone.
+            - 1% chance for a third new stone (independent roll).
+        - Add new stones to inventory (via `createStone()`).
+    - Equipping: First new stone generated is auto-equipped.
+    - Auto-save game state.
+- **Salvage Stone:**
+    - Implement action (e.g., in main menu).
+    - Requirements: Player must have an equipped stone.
+    - Process:
+        - Identify equipped stone.
+        - Calculate currency: `equippedStone.rarity * 10`.
+        - Add currency to player's total (`updateCurrency()`).
+        - Remove equipped stone from inventory (handles unequipping and auto-equipping next).
+    - Auto-save game state.
+
+## Combat and Card System Mechanics
+
+- **Fight Initiation:**
+    - Implement "Fight Opponent" action.
+    - Requirements: Equipped stone and available opponent.
+    - Implement `fightServiceInstance.startFight()`:
+        - Retrieve player's equipped stone and current opponent's stone.
+        - Create `FightSession` object:
+            - `sessionId`
+            - Player stone ID & `CombatParticipantState`
+            - Opponent stone ID & `CombatParticipantState`
+            - `currentRound` (initially 0)
+            - `isFightOver` (initially false)
+            - Fight event log
+        - Create initial `CombatParticipantState` for player and opponent (`createInitialCombatParticipantState(stone, initialHealth)` - default health 100).
+        - Clear `GameState.playerActiveCombatEffects`.
+        - Store `FightSession` in `fightServiceInstance`.
+- **Combat Participant State (`CombatParticipantState` Interface):**
+    - Define interface:
+        - `baseStone` (StoneQualities)
+        - `maxHealth` (number)
+        - `currentHealth` (number)
+        - `basePower` (number from `calculateStonePower(baseStone)`)
+        - `baseDefense` (number, default 0)
+        - `currentPower` (number)
+        - `currentDefense` (number)
+        - `activeEffects` (ActiveEffect[])
+- **Round Structure:**
+    - **A. Start New Round (`fightServiceInstance.startNewRound`):**
+        - Increment `currentRound` in `FightSession`.
+        - Recalculate player's `currentPower` and `currentDefense` by applying `GameState.playerActiveCombatEffects`.
+        - Recalculate opponent's stats based on their local `activeEffects`.
+        - Draw 3 cards from deck for choice (`gameStateManager.drawCardsFromDeck(3)`), store in `FightSession.currentRoundChoices`.
+        - Return `NewRoundInfo` (round number, cards for choice, player/opponent health).
+    - **B. Player Selects Card (`fightServiceInstance.playerSelectsCard`):**
+        - Player chooses 1 card from `cardsForChoice`.
+        - Add chosen card to hand (`gameStateManager.addCardsToHand`).
+        - Move unchosen cards to discard pile (`gameStateManager.addCardsToDiscardPile`).
+        - Update game state via `fightServiceInstance.playerSelectsCard(chosenCardId, discardedCardIds)`.
+    - **C. Player Plays Card (`fightServiceInstance.playerPlaysCard`):**
+        - Player selects a card from `gameState.hand`.
+        - Player selects target ('player' or 'opponent').
+        - Remove card from hand (`gameStateManager.removeCardFromHand`), move to discard pile (`gameStateManager.addCardsToDiscardPile`).
+        - Call card's `effect.apply(targetState, currentTargetEffects)`:
+            - Returns new `ActiveEffect[]` for the target.
+        - Apply returned effects:
+            - If target 'player': `gameStateManager.updatePlayerActiveCombatEffects()`, then update `FightSession` player state via `applyActiveEffectsToParticipant`.
+            - If target 'opponent': Update `FightSession` opponent `activeEffects`, then update opponent stats via `applyActiveEffectsToParticipant`.
+        - Return `CardPlayOutcome` (success, messages, updated states).
+    - **D. Resolve Current Round (`fightServiceInstance.resolveCurrentRound`):**
+        - Update player/opponent `CombatParticipantState` based on current `activeEffects`.
+        - Damage Calculation:
+            - Player Damage: `max(0, player.currentPower - opponent.currentDefense)`
+            - Opponent Damage: `max(0, opponent.currentPower - player.currentDefense)`
+        - Health Update: Subtract damage from `currentHealth` (min 0).
+        - Player Active Effects Update: Decrement `remainingDuration`, remove if `<= 0` (`updateAndCleanupActiveEffects` via `gameStateManager`).
+        - Opponent Active Effects Update: Similar duration decrement and cleanup.
+        - Fight Over Check: If `currentHealth <= 0` for player or opponent, set `fightSession.isFightOver = true`. Determine winner.
+        - Return `RoundResolutionOutcome` (damage, health, winner status, log).
+- **Active Effects (`ActiveEffect` Interface):**
+    - Define interface:
+        - `id` (string, unique instance ID)
+        - `name` (string)
+        - `description` (string)
+        - `remainingDuration` (number)
+        - `powerBoost` (number, optional)
+        - `defenseBoost` (number, optional)
+        - `healAmount` (number, optional, applied once)
+    - Implement `fightServiceInstance.applyActiveEffectsToParticipant(baseState, effects)`:
+        - Resets `currentPower`/`currentDefense` to base.
+        - Applies boosts and healAmount from effects.
+        - Returns modified `CombatParticipantState`.
+- **Card Definitions and Management:**
+    - **Card Structure (`Card` Interface):**
+        - `id` (string, unique)
+        - `name` (string)
+        - `type` (`CardType` enum: BUFF_ATTACK, BUFF_DEFENSE, SPECIAL)
+        - `description` (string)
+        - `effect` (`Effect` interface):
+            - `id` (string)
+            - `description` (string)
+            - `apply` (function: `(target: CombatParticipantState, existingEffects: ActiveEffect[]) => ActiveEffect[]`)
+    - **Predefined Cards (`src/config/cards.ts`):**
+        - Create `PREDEFINED_CARDS` list.
+        - Implement `getPredefinedCards()` (returns deep copy).
+    - **Deck, Hand, Discard Pile (`GameState`):**
+        - `deck` (Card[])
+        - `hand` (Card[])
+        - `discardPile` (Card[])
+    - **Management (`GameStateManager` methods):**
+        - `generateDeck()`
+        - `drawCardsFromDeck(count)` (shuffles discard if deck empty)
+        - `addCardsToHand(cards)`
+        - `removeCardFromHand(cardId)`
+        - `addCardsToDiscardPile(cards)`
+- **Fight Outcome (`fightServiceInstance.endFight`):**
+    - Trigger: When `fightSession.isFightOver` is true.
+    - Process:
+        - Determine final winner.
+        - Construct `FightOutcome` object:
+            - Player/Opponent stone IDs
+            - Winner ('player', 'opponent', 'tie')
+            - Fight log
+            - `currencyChange`
+            - `stoneLostByPlayer` (boolean)
+            - `newStoneGainedByPlayer` (StoneQualities | undefined)
+    - Rewards/Penalties:
+        - Player Win: `currencyChange = +10`. 10% chance for new random stone (add to inventory).
+        - Opponent Win: 15% chance player's equipped stone is lost (remove from inventory).
+        - Tie: No specific rewards/penalties.
+    - Apply currency/stone changes (`gameStateManager.updateCurrency`, inventory changes).
+    - Clear `fightSession` from `fightServiceInstance`.
+    - UI flow calls `GameStateManager.advanceOpponent()` after `endFight`.
+    - Return `FightOutcome`.
