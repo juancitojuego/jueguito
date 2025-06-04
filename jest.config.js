@@ -9,9 +9,6 @@ module.exports = {
     }],
     // If you have plain .js/.jsx files that need Solid JSX and ES6+ transpilation:
     // Ensure babel-jest and @babel/preset-env are installed if you uncomment this.
-    // '^.+\\.jsx?$': ['babel-jest', {
-    //   presets: [['@babel/preset-env', { targets: { node: 'current' } }], 'babel-preset-solid'],
-    // }],
     // If .js files contain JSX, babel-jest and @babel/preset-env would be needed.
   },
   moduleNameMapper: {
@@ -19,10 +16,6 @@ module.exports = {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     // Handle path aliases if you use them in tsconfig.json
     '^@/(.*)$': '<rootDir>/src/$1',
-    // Mappings for SolidJS specific exports, if not handled by preset or ts-jest correctly
-    // For example, to ensure browser versions are used:
-    // 'solid-js/web': '<rootDir>/node_modules/solid-js/web/dist/dev.cjs',
-    // 'solid-js': '<rootDir>/node_modules/solid-js/dist/dev.cjs',
   },
   testMatch: ['**/__tests__/**/*.ts?(x)', '**/?(*.)+(spec|test).ts?(x)'],
   globals: {
