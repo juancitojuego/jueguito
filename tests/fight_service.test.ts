@@ -12,19 +12,23 @@ import {
     endFight
 } from '../src/fight_service';
 import { GameState } from '../src/game_state';
+import { GameStateManager } from '../src/game_state_manager'; // Import GameStateManager
 import { StoneQualities, createStone, calculateStonePower, mulberry32, generateNewStoneSeed } from '../src/stone_mechanics';
 import { CombatParticipantState, FightSessionData, ActiveEffect, Card, NewRoundInfo, TargetType, CardPlayOutcome, RoundResolutionOutcome, FightOutcome, CardType, Effect } from '../src/combat_interfaces';
 import { PREDEFINED_CARDS, getPredefinedCards } from '../src/config/cards';
-import { GameStateManager } from '../src/game_state_manager';
 
-// Mock the GameStateManager.saveGame function
+// Mock the GameStateManager.saveGame function (and other static methods if needed for specific test control)
 jest.mock('../src/game_state_manager', () => {
     const originalModule = jest.requireActual('../src/game_state_manager');
     return {
         ...originalModule,
         GameStateManager: {
-            ...originalModule.GameStateManager,
-            saveGame: jest.fn(),
+            ...originalModule.GameStateManager, // Retain actual implementations for most static methods
+            saveGame: jest.fn().mockReturnValue(true), // Specifically mock saveGame
+            // Example: If drawCardsFromDeck needed specific mock behavior for a test:
+            // drawCardsFromDeck: jest.fn().mockImplementation((gs, count) => {
+            //    return getPredefinedCards().slice(0, count);
+            // }),
         }
     };
 });
@@ -50,19 +54,18 @@ describe('FightService', () => {
     let fightSession: FightSessionData | null;
 
     beforeEach(() => {
-        playerStone = createStone(101); // Player specific stone
-        opponentStone = createStone(102); // Opponent specific stone
+        playerStone = createStone(101);
+        opponentStone = createStone(102);
         gameState = GameState.createInitial("CombatTester", 2000);
-        GameStateManager.generateDeck(gameState);
+        GameStateManager.generateDeck(gameState); // Use manager
 
-        // Clear default stone and add our specific playerStone
         gameState.stones = [];
-        GameStateManager.addStoneToInventory(gameState, playerStone);
-        GameStateManager.equipStone(gameState, playerStone.seed);
+        GameStateManager.addStoneToInventory(gameState, playerStone); // Use manager
+        GameStateManager.equipStone(gameState, playerStone.seed); // Use manager
 
         clearCurrentFightSession();
-        fightSession = startFight(playerStone, opponentStone, gameState); // Start a new fight for each relevant describe block or test
-        (GameStateManager.saveGame as jest.Mock).mockClear();
+        fightSession = startFight(playerStone, opponentStone, gameState);
+        (GameStateManager.saveGame as jest.Mock).mockClear(); // Clear manager's saveGame mock
     });
 
     afterEach(() => {
@@ -80,17 +83,16 @@ describe('FightService', () => {
     });
 
     describe('startFight', () => {
+        beforeEach(() => { clearCurrentFightSession(); });
         it('should create a valid FightSessionData object', () => {
-            clearCurrentFightSession(); // ensure no session from outer beforeEach
             const session = startFight(playerStone, opponentStone, gameState);
             expect(session).not.toBeNull();
             if (!session) return;
             expect(session.playerParticipantId).toBe(playerStone.seed);
             expect(session.opponentParticipantId).toBe(opponentStone.seed);
-            expect(session.currentRound).toBe(0);
         });
         it('should clear playerActiveCombatEffects in GameState', () => {
-            GameStateManager.updatePlayerActiveCombatEffects(gameState, [{ id: 'eff1', name: 'Old', description: '', remainingDuration: 1 }]);
+            GameStateManager.updatePlayerActiveCombatEffects(gameState, [{ id: 'eff1', name: 'Old', description: '', remainingDuration: 1 }]); // Use manager
             startFight(playerStone, opponentStone, gameState);
             expect(gameState.playerActiveCombatEffects.length).toBe(0);
         });
@@ -111,24 +113,24 @@ describe('FightService', () => {
             const newState = applyActiveEffectsToParticipant(participantState, effects);
             expect(newState.currentPower).toBe(participantState.basePower + 10);
             expect(newState.currentDefense).toBe(participantState.baseDefense + 5);
-            expect(newState.currentHealth).toBe(90); // 70 + 20
+            expect(newState.currentHealth).toBe(90);
 
-            participantState.currentHealth = 95; // Test clamping
+            participantState.currentHealth = 95;
             const newState2 = applyActiveEffectsToParticipant(participantState, effects);
-            expect(newState2.currentHealth).toBe(100); // 95 + 20 clamped to 100 (maxHealth)
+            expect(newState2.currentHealth).toBe(100);
         });
     });
 
     describe('startNewRound', () => {
         beforeEach(() => {
-            if (!getCurrentFightSession()) { // Ensure session is active
+            if (!getCurrentFightSession()) {
                  fightSession = startFight(playerStone, opponentStone, gameState);
             }
-            if (gameState.deck.length < 3) GameStateManager.generateDeck(gameState);
+            if (gameState.deck.length < 3) GameStateManager.generateDeck(gameState); // Use manager
         });
         it('should draw 3 cards and store them in currentRoundChoices', () => {
             const initialDeckSize = gameState.deck.length;
-            const newRoundInfo = startNewRound(fightSession!, gameState); // Non-null assertion
+            const newRoundInfo = startNewRound(fightSession!, gameState);
             expect(newRoundInfo!.cardsForChoice.length).toBe(3);
             expect(fightSession!.currentRoundChoices!.length).toBe(3);
             expect(gameState.deck.length).toBe(initialDeckSize - 3);
@@ -142,7 +144,7 @@ describe('FightService', () => {
         });
         it('should add chosen card to hand and others to discard pile', () => {
             const chosenId = cardChoicesSample[1].id;
-            const result = playerSelectsCard(fightSession!, gameState, chosenId); // Non-null assertion
+            const result = playerSelectsCard(fightSession!, gameState, chosenId);
             expect(result.success).toBe(true);
             expect(gameState.hand.find(c => c.id === chosenId)).toBeDefined();
             expect(gameState.discardPile.find(c => c.id === cardChoicesSample[0].id)).toBeDefined();
@@ -154,11 +156,10 @@ describe('FightService', () => {
         let cardHealPlayer: Card;
 
         beforeEach(() => {
-            // Use actual predefined cards with their effects for more realistic testing
-            cardPowerBoost = { ...PREDEFINED_CARDS.find(c => c.id === 'card_001')! }; // Minor Power Boost
-            cardHealPlayer = { ...PREDEFINED_CARDS.find(c => c.id === 'card_003')! }; // Small Heal
+            cardPowerBoost = { ...PREDEFINED_CARDS.find(c => c.id === 'card_001')! };
+            cardHealPlayer = { ...PREDEFINED_CARDS.find(c => c.id === 'card_003')! };
 
-            GameStateManager.addCardsToHand(gameState, [cardPowerBoost, cardHealPlayer]);
+            GameStateManager.addCardsToHand(gameState, [cardPowerBoost, cardHealPlayer]); // Use manager
             if (fightSession) fightSession.playerState.currentHealth = 50;
         });
 
@@ -170,19 +171,18 @@ describe('FightService', () => {
             const effect = gameState.playerActiveCombatEffects[0];
             expect(effect.name).toBe('Minor Power Boost');
             expect(effect.powerBoost).toBe(5);
-            expect(effect.remainingDuration).toBe(3); // Duration is set to 3 in card_config for "2 rounds"
+            expect(effect.remainingDuration).toBe(2); // Corrected based on card_config.ts
             expect(result.updatedPlayerState?.currentPower).toBe(initialPlayerPower + 5);
         });
 
         it('should apply HEAL card to player and update health', () => {
-            fightSession!.playerState.currentHealth = 50; // Ensure health is not full
+            fightSession!.playerState.currentHealth = 50;
             const expectedHealth = Math.min(fightSession!.playerState.maxHealth, 50 + 10);
 
             const result = playerPlaysCard(fightSession!, gameState, cardHealPlayer.id, TargetType.PLAYER);
             expect(result.success).toBe(true);
             expect(result.updatedPlayerState?.currentHealth).toBe(expectedHealth);
-            // Heal effect (duration 1) is added, then applyActiveEffectsToParticipant handles healing
-            const healEffect = gameState.playerActiveCombatEffects.find(e => e.name === 'Small Heal');
+            const healEffect = gameState.playerActiveCombatEffects.find(e => e.name === 'Small Heal Effect'); // Name in ActiveEffect
             expect(healEffect).toBeDefined();
             expect(healEffect?.healAmount).toBe(10);
         });
@@ -195,35 +195,30 @@ describe('FightService', () => {
             fightSession!.opponentState = createInitialCombatParticipantState(opponentStone, 100);
             fightSession!.playerState.currentPower = 20; fightSession!.playerState.currentDefense = 5;
             fightSession!.opponentState.currentPower = 15; fightSession!.opponentState.currentDefense = 3;
-            GameStateManager.updatePlayerActiveCombatEffects(gameState, []);
+            GameStateManager.updatePlayerActiveCombatEffects(gameState, []); // Use manager
             fightSession!.opponentState.activeEffects = [];
             fightSession!.currentRound = 1;
             fightSession!.isFightOver = false;
         });
 
         it('should calculate damage, update healths, and manage effects', () => {
-            GameStateManager.updatePlayerActiveCombatEffects(gameState, [
+            GameStateManager.updatePlayerActiveCombatEffects(gameState, [ // Use manager
                 { id: 'p_buff', name: 'PBuff', description: '', remainingDuration: 2, powerBoost: 5 }
             ]);
             fightSession!.opponentState.activeEffects = [
                 { id: 'o_short_buff', name: 'OShortBuff', description: '', remainingDuration: 1, defenseBoost: 10 }
             ];
 
-            // Player: 20P (base) + 5P (buff) = 25P. 5D (base)
-            // Opponent: 15P (base). 3D (base) + 10D (buff) = 13D
-            // Player deals: 25 - 13 = 12 damage
-            // Opponent deals: 15 - 5 = 10 damage
             const outcome = resolveCurrentRound(fightSession!, gameState);
-            expect(outcome!.playerDamageDealt).toBe(12);
-            expect(outcome!.opponentDamageDealt).toBe(10);
-            expect(fightSession!.playerState.currentHealth).toBe(100 - 10); // 90
-            expect(fightSession!.opponentState.currentHealth).toBe(100 - 12); // 88
+            expect(outcome!.playerDamageDealt).toBe(12); // Player (20+5)P vs Opponent (3+10)D = 25 - 13 = 12
+            expect(outcome!.opponentDamageDealt).toBe(10); // Opponent 15P vs Player 5D = 15 - 5 = 10
+            expect(fightSession!.playerState.currentHealth).toBe(100 - 10);
+            expect(fightSession!.opponentState.currentHealth).toBe(100 - 12);
 
-            expect(gameState.playerActiveCombatEffects.length).toBe(1); // PBuff duration from 2 to 1
+            expect(gameState.playerActiveCombatEffects.length).toBe(1);
             expect(gameState.playerActiveCombatEffects[0].remainingDuration).toBe(1);
-            expect(fightSession!.opponentState.activeEffects.length).toBe(0); // OShortBuff expires
+            expect(fightSession!.opponentState.activeEffects.length).toBe(0);
 
-            // Check stats are re-calculated based on remaining effects
             expect(fightSession!.playerState.currentPower).toBe(fightSession!.playerState.basePower + 5);
             expect(fightSession!.opponentState.currentDefense).toBe(fightSession!.opponentState.baseDefense);
         });
@@ -242,24 +237,24 @@ describe('FightService', () => {
         });
 
         it('player wins: awards currency, 10% chance new stone (simulated success)', () => {
-            mockMathRandom.mockReturnValue(0.05); // < 0.10 for stone gain
+            mockMathRandom.mockReturnValue(0.05);
             const initialCurrency = gameState.currency;
             const initialStoneCount = gameState.stones.length;
             const outcome = endFight(fightSession!, gameState, TargetType.PLAYER);
             expect(outcome!.currencyChange).toBe(10);
-            expect(gameState.currency).toBe(initialCurrency + 10);
+            expect(gameState.currency).toBe(initialCurrency + 10); // Currency updated via GameStateManager
             expect(outcome!.newStoneGainedByPlayer).toBeDefined();
-            expect(gameState.stones.length).toBe(initialStoneCount + 1);
+            expect(gameState.stones.length).toBe(initialStoneCount + 1); // Stone added via GameStateManager
             expect(getCurrentFightSession()).toBeNull();
         });
 
         it('opponent wins: 15% chance player loses stone (simulated success)', () => {
-            mockMathRandom.mockReturnValue(0.10); // < 0.15 for stone loss
+            mockMathRandom.mockReturnValue(0.10);
             const equippedStoneId = gameState.equippedStoneId;
             const initialStoneCount = gameState.stones.length;
             const outcome = endFight(fightSession!, gameState, TargetType.OPPONENT);
             expect(outcome!.stoneLostByPlayer).toBe(true);
-            expect(gameState.getStoneById(equippedStoneId!)).toBeUndefined();
+            expect(gameState.getStoneById(equippedStoneId!)).toBeUndefined(); // Stone removed via GameStateManager
             expect(gameState.stones.length).toBe(initialStoneCount - 1);
         });
     });

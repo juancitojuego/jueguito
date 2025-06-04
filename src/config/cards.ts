@@ -202,24 +202,11 @@ export const PREDEFINED_CARDS: Card[] = [
 ];
 
 export function getPredefinedCards(): Card[] {
-    return PREDEFINED_CARDS.map(card => {
-        const originalCard = PREDEFINED_CARDS.find(c => c.id === card.id);
-        if (originalCard) {
-            return {
-                ...card,
-                effect: {
-                    ...card.effect,
-                    apply: originalCard.effect.apply
-                }
-            };
+    return PREDEFINED_CARDS.map(card => ({ // Create a new card object
+        ...card, // Spread all properties from the original card
+        effect: { // Create a new effect object
+            ...card.effect, // Spread all properties from the original effect
+            apply: card.effect.apply // Directly reference the original apply function
         }
-        // This fallback should ideally not be reached if PREDEFINED_CARDS is the source
-        return {
-            ...card,
-            effect: {
-                ...card.effect,
-                apply: (t, e) => e
-            }
-        };
-    });
+    }));
 }
