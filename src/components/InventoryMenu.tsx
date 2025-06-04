@@ -1,7 +1,7 @@
 import { Component, For, Show, createSignal, JSX } from 'solid-js';
 import { gameState, equipStone, saveGame } from '../store'; // Import new store items and actions
 import type { StoneQualities } from '../interfaces'; // Import type from interfaces
-import { showMessage, logMessage } from '../utils';
+import { showMessage, logMessage } from '../messageStore';
 import StonePreview from './StonePreview';
 // produce is not used here anymore
 

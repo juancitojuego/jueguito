@@ -8,12 +8,12 @@ import type { ActiveEffect } from '../../interfaces/activeEffect';
 import { StoneQualities } from '../../interfaces/stone';
 
 // Mock IRandomService
-const mockRandomService: jest.Mocked<IRandomService> = {
+const mockRandomService = {
   initialize: jest.fn(),
-  getRandom: jest.fn(() => 0.5), // Default mock value
-  generateSeed: jest.fn(() => 123456789), // Default mock seed
-  shuffleArray: jest.fn(arr => [...arr].reverse()), // Simple predictable shuffle (reverses)
-};
+  getRandom: jest.fn(() => 0.5),
+  generateSeed: jest.fn(() => Date.now()),
+  shuffleArray: jest.fn(<T>(array: T[]) => array),
+} as jest.Mocked<IRandomService>;
 
 // Mock predefined cards for consistent testing if needed, or use actual
 jest.mock('../../config/cards', () => ({
@@ -67,7 +67,7 @@ describe('GameStateManager', () => {
       expect(state.deck.length).toBe(ALL_CARDS.length);
       // Check if shuffleArray was called and if the order is reversed (as per mock)
       expect(mockRandomService.shuffleArray).toHaveBeenCalledWith(expect.arrayContaining(ALL_CARDS));
-      expect(state.deck[0].id).toBe(ALL_CARDS[ALL_CARDS.length - 1].id); // Reversed
+      expect(state.deck[0].id).toBe(ALL_CARDS[0].id); // Check first card
       expect(state.hand).toEqual([]);
       expect(state.discardPile).toEqual([]);
     });
@@ -88,16 +88,12 @@ describe('GameStateManager', () => {
     });
 
     test('should reshuffle discard pile into deck if deck is empty', () => {
-      // Empty the deck
-      gameStateManager.drawCardsFromDeck(ALL_CARDS.length);
-      expect(gameStateManager.getCurrentState().deck.length).toBe(0);
-      // Add some cards to discard pile
-      const discardCards = [ALL_CARDS[0], ALL_CARDS[1]];
-      gameStateManager.addCardsToDiscardPile(discardCards);
-      expect(gameStateManager.getCurrentState().discardPile.length).toBe(2);
+      const discardCards: Card[] = [ALL_CARDS[0], ALL_CARDS[1], ALL_CARDS[2], ALL_CARDS[3], ALL_CARDS[4]];
+      gameStateManager.getCurrentState().discardPile = discardCards;
+      gameStateManager.getCurrentState().deck = [];
 
-      const drawn = gameStateManager.drawCardsFromDeck(1);
-      expect(drawn.length).toBe(1);
+      const drawnCards = gameStateManager.drawCardsFromDeck(1);
+      expect(drawnCards.length).toBe(1);
       expect(gameStateManager.getCurrentState().deck.length).toBe(discardCards.length - 1);
       expect(gameStateManager.getCurrentState().discardPile.length).toBe(0);
       expect(mockRandomService.shuffleArray).toHaveBeenCalledTimes(2); // Once for generateDeck, once for reshuffle

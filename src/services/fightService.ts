@@ -149,6 +149,9 @@ private applyActiveEffectsToParticipant(
         this.fightSession.log.push('No cards left to draw for player choice.');
     }
 
+    // Set currentRoundChoices to the drawn cards
+    this.fightSession.currentRoundChoices = cardsForChoice;
+
     return {
       roundNumber: this.fightSession.currentRound,
       cardsForChoice,
@@ -162,24 +165,21 @@ private applyActiveEffectsToParticipant(
       throw new Error('Fight is not active or already over.');
     }
 
-    const chosenCardTemplate = getPredefinedCards().find(c => c.id === chosenCardId);
-
-    if (chosenCardTemplate) {
-        this.gameStateManager.addCardsToHand([JSON.parse(JSON.stringify(chosenCardTemplate))]);
-        this.fightSession.log.push(`Player added ${chosenCardTemplate.name} to hand.`);
-    } else {
-        const errorMsg = `Error: Chosen card ID ${chosenCardId} not found among predefined cards. This assumes cards offered were from predefined set.`;
-        this.fightSession.log.push(errorMsg);
+    const chosen = this.fightSession.currentRoundChoices.find(c => c.id === chosenCardId);
+    if (!chosen) {
+      throw new Error('Invalid card choice');
     }
 
-    const cardsToDiscardTemplates: Card[] = [];
-    for (const id of discardedCardIds) {
-        const cardToDiscardTemplate = getPredefinedCards().find(c => c.id === id);
-        if (cardToDiscardTemplate) cardsToDiscardTemplates.push(JSON.parse(JSON.stringify(cardToDiscardTemplate)));
-    }
-    if (cardsToDiscardTemplates.length > 0) {
-        this.gameStateManager.addCardsToDiscardPile(cardsToDiscardTemplates);
-        this.fightSession.log.push(`Player discarded ${cardsToDiscardTemplates.map(c => c.name).join(', ')}.`);
+    // Add the chosen card to the hand
+    await this.gameStateManager.addCardsToHand([chosen]);
+
+    // Remove the chosen card from the hand
+    await this.gameStateManager.removeCardFromHand(chosenCardId);
+
+    // Add discarded cards to the discard pile
+    if (discardedCardIds.length > 0) {
+      const discarded = this.fightSession.currentRoundChoices.filter(c => discardedCardIds.includes(c.id));
+      await this.gameStateManager.addCardsToDiscardPile(discarded);
     }
 
     return JSON.parse(JSON.stringify(this.fightSession));
@@ -249,6 +249,11 @@ private applyActiveEffectsToParticipant(
     const player = this.fightSession.player;
     const opponent = this.fightSession.opponent;
 
+    // Log initial states
+    console.log('Initial Player Health:', player.combatState.currentHealth);
+    console.log('Initial Opponent Health:', opponent.combatState.currentHealth);
+    console.log('Initial Player Effects:', this.gameStateManager.getCurrentState().playerActiveCombatEffects);
+
     // Ensure combat states are up-to-date with latest effects before resolution
     player.combatState = this.applyActiveEffectsToParticipant(player.combatState, this.gameStateManager.getCurrentState().playerActiveCombatEffects);
     opponent.combatState = this.applyActiveEffectsToParticipant(opponent.combatState, opponent.combatState.activeEffects);
@@ -262,10 +267,17 @@ private applyActiveEffectsToParticipant(
     opponent.combatState.currentHealth = Math.max(0, opponent.combatState.currentHealth);
     player.combatState.currentHealth = Math.max(0, player.combatState.currentHealth);
 
+    // Log states after damage calculation
+    console.log('Player Health After Damage:', player.combatState.currentHealth);
+    console.log('Opponent Health After Damage:', opponent.combatState.currentHealth);
+
     let roundLog = `Round ${this.fightSession.currentRound} resolved: Player (H:${player.combatState.currentHealth}) dealt ${playerDamage}. Opponent (H:${opponent.combatState.currentHealth}) dealt ${opponentDamage}.`;
     this.fightSession.log.push(roundLog);
 
     this.updateAndCleanupActiveEffects('player');
+
+    // Log player effects after cleanup
+    console.log('Player Effects After Cleanup:', this.gameStateManager.getCurrentState().playerActiveCombatEffects);
 
     // Opponent effect cleanup (if they have effects in their own list)
     if (this.fightSession.opponent.combatState.activeEffects) {

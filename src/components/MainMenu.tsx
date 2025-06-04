@@ -21,7 +21,7 @@ import {
   // calculateStonePower is now part of FightService
 } from '../stone';
 import type { StoneQualities } from '../interfaces'; // Import type directly
-import { logMessage, showMessage } from '../utils';
+import { logMessage, showMessage } from '../messageStore';
 // No need for produce from solid-js/store directly in component if actions handle updates
 
 interface MainMenuProps {
@@ -99,9 +99,19 @@ const MainMenu: Component<MainMenuProps> = (props) => {
     const outcome = fightServiceInstance.executeFight(playerStone, opponentStone);
 
     logMessage(outcome.logMessage); // Use log message from fight outcome
-    showMessage(outcome.logMessage.substring(outcome.logMessage.indexOf("Player wins!") !== -1 || outcome.logMessage.indexOf("Opponent wins.") !== -1 || outcome.logMessage.indexOf("It's a tie.") !== -1 ? outcome.logMessage.indexOf("Player wins!") : outcome.logMessage.indexOf("Opponent wins.") !== -1 ? outcome.logMessage.indexOf("Opponent wins.") : outcome.logMessage.indexOf("It's a tie.") : 0), 5000, 
+    
+    // Find the index of the result message
+    let resultIndex = 0;
+    if (outcome.logMessage.includes("Player wins!")) {
+      resultIndex = outcome.logMessage.indexOf("Player wins!");
+    } else if (outcome.logMessage.includes("Opponent wins.")) {
+      resultIndex = outcome.logMessage.indexOf("Opponent wins.");
+    } else if (outcome.logMessage.includes("It's a tie.")) {
+      resultIndex = outcome.logMessage.indexOf("It's a tie.");
+    }
+    
+    showMessage(outcome.logMessage.substring(resultIndex), 5000,
                 outcome.winner === 'player' ? 'success' : outcome.winner === 'opponent' ? 'error' : 'info');
-
 
     if (outcome.currencyChange && outcome.currencyChange !== 0) {
       updateCurrency(outcome.currencyChange);

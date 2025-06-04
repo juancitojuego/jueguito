@@ -19,6 +19,7 @@ export interface FightSession {
   isFightOver: boolean;
   winner?: 'player' | 'opponent' | 'tie'; // Set when fight is over
   log: string[]; // Log of actions and events during the fight
+  currentRoundChoices: Card[]; // Cards available for the current round
 }
 
 // Information provided at the start of a new round, including cards for choice

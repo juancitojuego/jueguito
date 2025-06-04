@@ -1,6 +1,9 @@
 // src/interfaces/gameStateManager.ts
+import type { GameState } from './gameState';
 export type { GameState, PlayerStats } from './gameState'; // Ensure PlayerStats is also re-exported
 import type { StoneQualities } from './stone';
+import type { Card } from './card';
+import type { ActiveEffect } from './activeEffect';
 
 // Listener for state changes. The listener receives the new state.
 export type GameStateListener = (newState: GameState) => void;
@@ -89,4 +92,37 @@ export interface IGameStateManager {
    * @returns The StoneQualities object or null if not found.
    */
   getStoneById(stoneId: number): StoneQualities | null;
+
+  // --- Card Game Mechanics ---
+  /**
+   * Draws a specified number of cards from the deck.
+   * @param count The number of cards to draw.
+   * @returns An array of drawn cards.
+   */
+  drawCardsFromDeck(count: number): Card[];
+
+  /**
+   * Adds cards to the player's hand.
+   * @param cards The cards to add.
+   */
+  addCardsToHand(cards: Card[]): void;
+
+  /**
+   * Removes a card from the player's hand.
+   * @param cardId The ID of the card to remove.
+   * @returns The removed card.
+   */
+  removeCardFromHand(cardId: string): Card;
+
+  /**
+   * Adds cards to the discard pile.
+   * @param cards The cards to add.
+   */
+  addCardsToDiscardPile(cards: Card[]): void;
+
+  /**
+   * Updates the player's active combat effects.
+   * @param effects The new active effects.
+   */
+  updatePlayerActiveCombatEffects(effects: ActiveEffect[]): void;
 }

@@ -8,9 +8,6 @@ import type {
 import type { StoneQualities } from '../interfaces/stone';
 import type { IRandomService } from '../interfaces/randomService';
 import { createStone, generateNewStoneSeed } from '../stone';
-// Import a function to get a default structure, which will be adapted.
-// The existing getDefaultSaveData from src/store.ts returns SaveData, not GameState.
-// We'll define a new default GameState structure here or adapt.
 import type { Card } from '../interfaces/card'; // Import Card
 import type { ActiveEffect } from '../interfaces/activeEffect'; // Import ActiveEffect
 import { getPredefinedCards } from '../config/cards'; // Import card definitions
@@ -249,15 +246,15 @@ export class GameStateManager implements IGameStateManager {
 
   public addStoneToInventory(stone: StoneQualities): void {
     // Prevent duplicates by seed, though createStone should yield unique seeds if PRNG is handled well
-    if (!this.state.stones.find((s: StoneQualities) => s.seed === stone.seed)) {
+    if (!this.state.stones.find(s => s.seed === stone.seed)) {
       this.state.stones.push(stone);
-      this.state.stones.sort((a: StoneQualities, b: StoneQualities) => a.createdAt - b.createdAt); // Sort by creation time
+      this.state.stones.sort((a, b) => a.createdAt - b.createdAt); // Sort by creation time
       this.notifyListeners();
     }
   }
 
   public removeStoneFromInventory(stoneId: number): void {
-    this.state.stones = this.state.stones.filter((s: StoneQualities) => s.seed !== stoneId);
+    this.state.stones = this.state.stones.filter(s => s.seed !== stoneId);
     if (this.state.equippedStoneId === stoneId) {
       this.equipStone(this.state.stones.length > 0 ? this.state.stones[0].seed : null);
     }
@@ -265,7 +262,7 @@ export class GameStateManager implements IGameStateManager {
   }
 
   public equipStone(stoneId: number | null): void {
-    if (stoneId === null || this.state.stones.find((s: StoneQualities) => s.seed === stoneId)) {
+    if (stoneId === null || this.state.stones.find(s => s.seed === stoneId)) {
       this.state.equippedStoneId = stoneId;
       this.notifyListeners();
     } else {
@@ -327,12 +324,12 @@ export class GameStateManager implements IGameStateManager {
 
   public getEquippedStoneDetails(): StoneQualities | null {
     if (this.state.equippedStoneId === null) return null;
-    const stone = this.state.stones.find((s: StoneQualities) => s.seed === this.state.equippedStoneId);
+    const stone = this.state.stones.find(s => s.seed === this.state.equippedStoneId);
     return stone ? this.deepCopy(stone) : null;
   }
 
   public getStoneById(stoneId: number): StoneQualities | null {
-    const stone = this.state.stones.find((s: StoneQualities) => s.seed === stoneId);
+    const stone = this.state.stones.find(s => s.seed === stoneId);
     return stone ? this.deepCopy(stone) : null;
   }
 }

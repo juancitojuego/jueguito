@@ -3,7 +3,7 @@ import { resetGameDefaults } from '../store'; // Import new action
 // mulberry32 and generateNewStoneSeed are for client-side seed generation if needed
 // but GameStateManager will handle actual game setup.
 import { mulberry32, generateNewStoneSeed } from '../stone'; 
-import { logMessage, showMessage } from '../utils';
+import { logMessage, showMessage } from '../messageStore';
 
 const StartMenu: Component = () => {
   const [seedInput, setSeedInput] = createSignal('');

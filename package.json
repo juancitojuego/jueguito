@@ -20,6 +20,7 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@babel/core": "^7.27.4",
     "@solidjs/testing-library": "^0.8.10",
     "@testing-library/jest-dom": "^6.6.3",
     "@types/blessed": "^0.1.25",

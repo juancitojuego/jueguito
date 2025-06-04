@@ -1,5 +1,5 @@
 import { Component, Show } from 'solid-js';
-import { currentMessage } from '../store'; // Assuming path is correct
+import { currentMessage } from '../messageStore'; // Use messageStore for currentMessage
 
 const MessageLine: Component = () => {
   return (

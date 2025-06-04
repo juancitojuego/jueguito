@@ -1,5 +1,5 @@
 import { Component, For, createEffect, JSX } from 'solid-js';
-import { consoleLogMessages } from '../store'; 
+import { consoleLogMessages } from '../messageStore'; 
 
 const ConsoleLog: Component = () => {
   let scrollableLogRef: HTMLDivElement | undefined;
