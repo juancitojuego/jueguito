@@ -1,3 +1,20 @@
+## Project Setup and Workflow
+
+This project is developed using Node.js and TypeScript to ensure type safety and modern JavaScript features.
+
+-   **Package Manager**: NPM is used for managing project dependencies. Key files include `package.json` and `package-lock.json`.
+-   **TypeScript**: Source code is written in TypeScript (`.ts`) and located in the `src/` directory. It is compiled to JavaScript in the `dist/` directory using the settings in `tsconfig.json`. The `rootDir` in `tsconfig.json` is set to `.` which means the `dist` folder will mirror the project structure (e.g. `dist/src/...`, `dist/tests/...`).
+-   **Testing**: Jest is used as the testing framework. Test files are also written in TypeScript (`.ts`) and are located in the `tests/` directory, named with the `*.test.ts` pattern. Jest configuration is in `jest.config.js`.
+
+### Key Development Commands
+
+-   **Install Dependencies**: `npm install`
+-   **Compile TypeScript**: `npm run build` (compiles `src` and `tests` to `dist`)
+-   **Compile TypeScript (Watch Mode)**: `npm run build:watch`
+-   **Run Tests**: `npm run test` (runs tests using Jest, which uses `ts-jest` to compile TypeScript in memory)
+
+---
+
 ## Stone Mechanics
 
 - **Stone Generation:**
