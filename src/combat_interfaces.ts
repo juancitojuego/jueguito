@@ -1,7 +1,15 @@
 // src/combat_interfaces.ts
 import { StoneQualities } from "./stone_mechanics";
 
-// Placeholder for ActiveEffect - will be detailed later
+// Placeholder for Card - will be detailed more in a later step
+export interface Card {
+    id: string;
+    name: string;
+    description: string;
+    type: string; // Example: BUFF_ATTACK, BUFF_DEFENSE, SPECIAL - consider enum later
+    // effect: Effect; // Placeholder for actual effect logic
+}
+
 export interface ActiveEffect {
     id: string;          // Unique identifier for the effect instance
     name: string;        // Display name of the effect
@@ -33,9 +41,21 @@ export interface FightSessionData {
     currentRound: number;
     isFightOver: boolean;
     fightLog: string[]; // Log of significant events in the fight
+    currentRoundChoices?: Card[]; // Add this property - cards offered to player at start of round
 }
 
 export enum TargetType {
     PLAYER = 'player',
     OPPONENT = 'opponent',
+}
+
+// New Interface for Start New Round result
+export interface NewRoundInfo {
+    roundNumber: number;
+    cardsForChoice: Card[];
+    playerHealth: number;
+    opponentHealth: number;
+    // Optionally include player/opponent power & defense if useful for UI
+    // playerCurrentPower: number;
+    // opponentCurrentPower: number;
 }

@@ -1,27 +1,10 @@
 // src/game_state.ts
-import { StoneQualities, createStone, generateNewStoneSeed, mulberry32, IStoneQualities, StonePowerInputs } from './stone_mechanics';
+import { StoneQualities, createStone, generateNewStoneSeed, mulberry32 } from './stone_mechanics';
 import { generateNewOpponentQueue } from './opponent_system';
+import { Card, ActiveEffect } from './combat_interfaces';
+import { getPredefinedCards } from './config/cards';
 
 export const LOCAL_STORAGE_KEY: string = 'stoneCrafterGameState';
-
-// Placeholder for Card and ActiveEffect types based on NEXT.md
-export interface Card {
-    id: string;
-    name: string;
-    type: string; // Example: BUFF_ATTACK, BUFF_DEFENSE, SPECIAL - consider enum
-    description: string;
-    effect: any; // Define Effect interface later
-}
-
-export interface ActiveEffect {
-    id: string;
-    name: string;
-    description: string;
-    remainingDuration: number;
-    powerBoost?: number;
-    defenseBoost?: number;
-    healAmount?: number;
-}
 
 export class PlayerStats {
     public name: string;
@@ -60,30 +43,20 @@ export class GameState {
     }
 
     public addStoneToInventory(stoneInstance: StoneQualities): boolean {
-        if (!(stoneInstance instanceof StoneQualities)) {
-            return false;
-        }
-        if (this.stones.some(s => s.seed === stoneInstance.seed)) {
-            return false;
-        }
+        if (!(stoneInstance instanceof StoneQualities)) { return false; }
+        if (this.stones.some(s => s.seed === stoneInstance.seed)) { return false; }
         this.stones.push(stoneInstance);
         this.stones.sort((a, b) => a.createdAt - b.createdAt);
-        if (this.equippedStoneId === null) {
-            this.autoEquipNextAvailable();
-        }
+        if (this.equippedStoneId === null) { this.autoEquipNextAvailable(); }
         return true;
     }
 
     public removeStoneFromInventory(stoneSeed: number): boolean {
         const stoneIndex = this.stones.findIndex(s => s.seed === stoneSeed);
-        if (stoneIndex === -1) {
-            return false;
-        }
+        if (stoneIndex === -1) { return false; }
         const removedStoneWasEquipped = (this.equippedStoneId === stoneSeed);
         this.stones.splice(stoneIndex, 1);
-        if (removedStoneWasEquipped) {
-            this.equippedStoneId = null;
-        }
+        if (removedStoneWasEquipped) { this.equippedStoneId = null; }
         this.autoEquipNextAvailable();
         return true;
     }
@@ -95,14 +68,10 @@ export class GameState {
 
     public equipStone(stoneSeed: number | null | undefined): boolean {
         if (stoneSeed === null || typeof stoneSeed === 'undefined') {
-            this.equippedStoneId = null;
-            return true;
+             this.equippedStoneId = null; return true;
         }
         const stoneToEquip = this.getStoneById(stoneSeed);
-        if (stoneToEquip) {
-            this.equippedStoneId = stoneSeed;
-            return true;
-        }
+        if (stoneToEquip) { this.equippedStoneId = stoneSeed; return true; }
         return false;
     }
 
@@ -111,16 +80,11 @@ export class GameState {
         if (this.equippedStoneId !== null) {
             if (this.getStoneById(this.equippedStoneId)) {
                 currentEquippedStoneIsValid = true;
-            } else {
-                this.equippedStoneId = null;
-            }
+            } else { this.equippedStoneId = null; }
         }
         if (!currentEquippedStoneIsValid) {
-            if (this.stones.length > 0) {
-                this.equipStone(this.stones[0].seed);
-            } else {
-                this.equippedStoneId = null;
-            }
+            if (this.stones.length > 0) { this.equipStone(this.stones[0].seed); }
+            else { this.equippedStoneId = null; }
         }
     }
 
@@ -133,12 +97,8 @@ export class GameState {
             this.opponentQueue = generateNewOpponentQueue(this.opponentsSeed!, 100);
             this.opponents_index = 0;
         }
-
-        if (this.opponentQueue.length === 0) {
+        if (this.opponentQueue.length === 0 || this.opponents_index >= this.opponentQueue.length) { // Check again after potential regeneration
             return null;
-        }
-        if (this.opponents_index >= this.opponentQueue.length) {
-            this.opponents_index = 0;
         }
         return this.opponentQueue[this.opponents_index];
     }
@@ -147,36 +107,73 @@ export class GameState {
         this.opponents_index++;
     }
 
+    public generateDeck(): void {
+        this.deck = getPredefinedCards();
+        for (let i = this.deck.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
+        }
+        this.hand = [];
+        this.discardPile = [];
+    }
+
+    public drawCardsFromDeck(count: number): Card[] {
+        const drawnCards: Card[] = [];
+        for (let i = 0; i < count; i++) {
+            if (this.deck.length === 0) {
+                if (this.discardPile.length === 0) { break; }
+                this.deck = [...this.discardPile];
+                this.discardPile = [];
+                for (let k = this.deck.length - 1; k > 0; k--) {
+                    const j = Math.floor(Math.random() * (k + 1));
+                    [this.deck[k], this.deck[j]] = [this.deck[j], this.deck[k]];
+                }
+            }
+            if (this.deck.length > 0) {
+                const card = this.deck.pop();
+                if (card) drawnCards.push(card);
+            }
+        }
+        return drawnCards;
+    }
+
     public updateCurrency(amount: number): void {
         this.currency += amount;
         if (this.currency < 0) {
-            this.currency = 0; // Ensure currency doesn't go negative
+            this.currency = 0;
         }
+    }
+
+    public addCardsToHand(cardsToAdd: Card[]): void {
+        this.hand.push(...cardsToAdd);
+        // console.log(`[GameState] Added ${cardsToAdd.length} cards to hand. Hand size: ${this.hand.length}`);
+    }
+
+    public addCardsToDiscardPile(cardsToDiscard: Card[]): void {
+        this.discardPile.push(...cardsToDiscard);
+        // console.log(`[GameState] Added ${cardsToDiscard.length} cards to discard pile. Discard pile size: ${this.discardPile.length}`);
     }
 
     public static createInitial(playerName: string, masterSeed: number): GameState {
         const setupPrng = mulberry32(masterSeed);
         const sessionGameSeed = setupPrng();
         const newGameState = new GameState(playerName, sessionGameSeed);
-        newGameState.currency = 0;
         newGameState.opponentsSeed = generateNewStoneSeed(setupPrng);
         const firstStoneSeed = generateNewStoneSeed(setupPrng);
         const initialStone = createStone(firstStoneSeed);
         newGameState.addStoneToInventory(initialStone);
-        if (newGameState.stones.length > 0) {
-            newGameState.equipStone(newGameState.stones[0].seed);
-        }
+        newGameState.generateDeck();
         return newGameState;
     }
 }
 
+// saveGame and loadGame functions remain unchanged from previous state
 export function saveGame(gameStateInstance: GameState): boolean {
     console.log(`[SaveGame] Player: ${gameStateInstance.playerStats.name}. Attempting to save...`);
     try {
-        const { opponentQueue, ...dataToSave } = gameStateInstance;
+        const { opponentQueue, ...dataToSave } = gameStateInstance; // opponentQueue is not serialized
         const gameStateJson = JSON.stringify(dataToSave);
         // console.log(`[SaveGame] Placeholder: Game state would be saved (e.g., to localStorage with key '${LOCAL_STORAGE_KEY}').`);
-        // Example: global.localStorage.setItem(LOCAL_STORAGE_KEY, gameStateJson);
         return true;
     } catch (error) {
         // console.error("[SaveGame] Error saving game state:", error);
@@ -186,8 +183,7 @@ export function saveGame(gameStateInstance: GameState): boolean {
 
 export function loadGame(): GameState {
     console.log("[LoadGame] Attempting to load game state from key:", LOCAL_STORAGE_KEY);
-    // const savedGameStateJson = typeof localStorage !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
-    const savedGameStateJson: string | null = null; // Simulate no saved game for now
+    const savedGameStateJson: string | null = null;
     console.log("[LoadGame] Placeholder: Game state would be loaded.");
 
     if (savedGameStateJson) {
@@ -201,17 +197,15 @@ export function loadGame(): GameState {
 
             if (loadedData.stones && Array.isArray(loadedData.stones)) {
                 reconstructedState.stones = loadedData.stones.map((stoneData: any) => {
-                    return new StoneQualities(stoneData); // Constructor handles optional createdAt
+                    return new StoneQualities(stoneData);
                 });
             } else {
                 reconstructedState.stones = [];
             }
 
             reconstructedState.equippedStoneId = loadedData.equippedStoneId || null;
-
             reconstructedState.opponentsSeed = loadedData.opponentsSeed || null;
             reconstructedState.opponents_index = loadedData.opponents_index || 0;
-            // opponentQueue is intentionally left empty; it will be regenerated by getCurrentOpponent()
 
             reconstructedState.deck = loadedData.deck || [];
             reconstructedState.hand = loadedData.hand || [];
