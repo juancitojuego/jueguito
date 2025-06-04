@@ -11,14 +11,14 @@ export const PREDEFINED_CARDS: Card[] = [
         type: CardType.BUFF_ATTACK,
         description: 'Increases current Power by 5 for 2 rounds.',
         effect: {
-            id: 'effect_power_boost_minor', // Type ID for this kind of effect
-            description: 'Grants +5 Power for 2 rounds.',
+            id: 'effect_power_boost_minor',
+            description: 'Grants +5 Power for 2 rounds.', // Card description of effect
             apply: (target: CombatParticipantState, existingEffects: ReadonlyArray<ActiveEffect>): ActiveEffect[] => {
                 const newEffect: ActiveEffect = {
-                    id: generateEffectInstanceId('power_boost_minor'), // Unique instance ID
-                    name: 'Minor Power Boost',
-                    description: '+5 Power', // Effect's own description
-                    remainingDuration: 3, // Lasts for this round and 2 more
+                    id: generateEffectInstanceId('power_boost_minor'),
+                    name: 'Minor Power Boost', // Effect name (for UI, logs)
+                    description: '+5 Power', // Effect description (for UI, logs)
+                    remainingDuration: 2, // Active this round and next round. Cleaned up after 2nd round's resolution.
                     powerBoost: 5,
                     sourceCardId: 'card_001',
                 };
@@ -39,7 +39,7 @@ export const PREDEFINED_CARDS: Card[] = [
                     id: generateEffectInstanceId('defense_boost_minor'),
                     name: 'Minor Defense Boost',
                     description: '+5 Defense',
-                    remainingDuration: 3, // Lasts for this round and 2 more
+                    remainingDuration: 2,
                     defenseBoost: 5,
                     sourceCardId: 'card_002',
                 };
@@ -58,9 +58,9 @@ export const PREDEFINED_CARDS: Card[] = [
             apply: (target: CombatParticipantState, existingEffects: ReadonlyArray<ActiveEffect>): ActiveEffect[] => {
                 const newEffect: ActiveEffect = {
                     id: generateEffectInstanceId('heal_small'),
-                    name: 'Small Heal',
-                    description: '+10 HP (Instant)',
-                    remainingDuration: 1, // Applied by applyActiveEffectsToParticipant, then removed next cleanup phase
+                    name: 'Small Heal Effect', // Name of the temporary effect object
+                    description: '+10 HP (Applied once)', // Description of the effect instance
+                    remainingDuration: 1, // Will be applied by applyActiveEffectsToParticipant, then removed in cleanup
                     healAmount: 10,
                     sourceCardId: 'card_003',
                 };
@@ -72,13 +72,13 @@ export const PREDEFINED_CARDS: Card[] = [
         id: 'card_004',
         name: 'Quick Jab',
         type: CardType.ATTACK,
-        description: 'A fast attack. Deals damage based on power.',
+        description: 'A fast attack. Deals damage based on current power.',
         effect: {
             id: 'effect_quick_jab',
-            description: 'Standard attack, no persistent effect.',
+            description: 'Direct damage based on power, no lasting effect.',
             apply: (target: CombatParticipantState, existingEffects: ReadonlyArray<ActiveEffect>): ActiveEffect[] => {
-                // No ActiveEffect applied by this card directly.
-                // Damage is handled by combat resolution based on attacker's power.
+                // ATTACK cards typically don't apply status effects unless specified.
+                // Their "effect" is the damage dealt during combat resolution.
                 return [...existingEffects];
             }
         }
@@ -96,7 +96,7 @@ export const PREDEFINED_CARDS: Card[] = [
                     id: generateEffectInstanceId('guard_up'),
                     name: 'Guard Up',
                     description: '+10 Defense',
-                    remainingDuration: 2, // Lasts for this round and 1 more
+                    remainingDuration: 1, // Active for this round's resolution only.
                     defenseBoost: 10,
                     sourceCardId: 'card_005',
                 };
@@ -111,7 +111,7 @@ export const PREDEFINED_CARDS: Card[] = [
         description: 'A precise attack. (No special effect beyond base damage).',
         effect: {
             id: 'effect_focused_strike',
-            description: 'Standard attack, no persistent effect.',
+            description: 'Direct damage based on power, no lasting effect.',
             apply: (target: CombatParticipantState, existingEffects: ReadonlyArray<ActiveEffect>): ActiveEffect[] => [...existingEffects]
         }
     },
@@ -128,7 +128,7 @@ export const PREDEFINED_CARDS: Card[] = [
                     id: generateEffectInstanceId('rally_cry'),
                     name: 'Rally Cry',
                     description: '+8 Power',
-                    remainingDuration: 2, // Lasts for this round and 1 more
+                    remainingDuration: 1,
                     powerBoost: 8,
                     sourceCardId: 'card_007'
                 };
@@ -147,8 +147,8 @@ export const PREDEFINED_CARDS: Card[] = [
             apply: (target: CombatParticipantState, existingEffects: ReadonlyArray<ActiveEffect>): ActiveEffect[] => {
                 const newEffect: ActiveEffect = {
                     id: generateEffectInstanceId('mend_wounds'),
-                    name: 'Mend Wounds',
-                    description: '+20 HP (Instant)',
+                    name: 'Mend Wounds Effect',
+                    description: '+20 HP (Applied once)',
                     remainingDuration: 1,
                     healAmount: 20,
                     sourceCardId: 'card_008'
@@ -169,8 +169,8 @@ export const PREDEFINED_CARDS: Card[] = [
                 const newEffect: ActiveEffect = {
                     id: generateEffectInstanceId('stone_shield'),
                     name: 'Stone Shield',
-                    description: '+7 Defense', // Description of the active effect itself
-                    remainingDuration: 4, // Lasts for this round and 3 more
+                    description: '+7 Defense',
+                    remainingDuration: 3,
                     defenseBoost: 7,
                     sourceCardId: 'card_009'
                 };
@@ -191,7 +191,7 @@ export const PREDEFINED_CARDS: Card[] = [
                     id: generateEffectInstanceId('power_surge_buff'),
                     name: 'Power Surge',
                     description: '+15 Power',
-                    remainingDuration: 2, // Lasts for this round and 1 more
+                    remainingDuration: 1,
                     powerBoost: 15,
                     sourceCardId: 'card_010'
                 };
@@ -202,21 +202,24 @@ export const PREDEFINED_CARDS: Card[] = [
 ];
 
 export function getPredefinedCards(): Card[] {
-    // Return a deep copy to ensure card effect functions are fresh if they were mutated (though they shouldn't be)
-    // and to prevent modification of the original PREDEFINED_CARDS array or its objects.
-    return JSON.parse(JSON.stringify(PREDEFINED_CARDS)).map((card: Card) => {
-        // Find the original card definition to copy its effect.apply function,
-        // as functions are not preserved by JSON.parse(JSON.stringify(...)).
+    return PREDEFINED_CARDS.map(card => {
         const originalCard = PREDEFINED_CARDS.find(c => c.id === card.id);
         if (originalCard) {
             return {
-                ...card, // Spread the parsed card (which has all properties except the function)
-                effect: { // Re-assign the effect object with the function
-                    ...card.effect, // Spread the parsed effect (id, description)
-                    apply: originalCard.effect.apply // Assign the original function reference
+                ...card,
+                effect: {
+                    ...card.effect,
+                    apply: originalCard.effect.apply
                 }
             };
         }
-        return card; // Should not happen if all cards are in PREDEFINED_CARDS
+        // This fallback should ideally not be reached if PREDEFINED_CARDS is the source
+        return {
+            ...card,
+            effect: {
+                ...card.effect,
+                apply: (t, e) => e
+            }
+        };
     });
 }
