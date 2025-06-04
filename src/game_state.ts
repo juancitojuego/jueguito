@@ -1,5 +1,6 @@
 // src/game_state.ts
 import { StoneQualities, createStone, generateNewStoneSeed, mulberry32, IStoneQualities, StonePowerInputs } from './stone_mechanics';
+import { generateNewOpponentQueue } from './opponent_system';
 
 export const LOCAL_STORAGE_KEY: string = 'stoneCrafterGameState';
 
@@ -37,6 +38,7 @@ export class GameState {
     public equippedStoneId: number | null;
     public opponentsSeed: number | null;
     public opponents_index: number;
+    public opponentQueue: StoneQualities[];
     public deck: Card[];
     public hand: Card[];
     public discardPile: Card[];
@@ -50,6 +52,7 @@ export class GameState {
         this.equippedStoneId = null;
         this.opponentsSeed = null;
         this.opponents_index = 0;
+        this.opponentQueue = [];
         this.deck = [];
         this.hand = [];
         this.discardPile = [];
@@ -121,6 +124,29 @@ export class GameState {
         }
     }
 
+    public getCurrentOpponent(): StoneQualities | null {
+        if (this.opponentQueue.length === 0 || this.opponents_index >= this.opponentQueue.length) {
+            if (this.opponentsSeed === null) {
+                const gamePrng = mulberry32(this.gameSeed);
+                this.opponentsSeed = generateNewStoneSeed(gamePrng);
+            }
+            this.opponentQueue = generateNewOpponentQueue(this.opponentsSeed!, 100);
+            this.opponents_index = 0;
+        }
+
+        if (this.opponentQueue.length === 0) {
+            return null;
+        }
+        if (this.opponents_index >= this.opponentQueue.length) {
+            this.opponents_index = 0;
+        }
+        return this.opponentQueue[this.opponents_index];
+    }
+
+    public advanceOpponent(): void {
+        this.opponents_index++;
+    }
+
     public static createInitial(playerName: string, masterSeed: number): GameState {
         const setupPrng = mulberry32(masterSeed);
         const sessionGameSeed = setupPrng();
@@ -133,10 +159,6 @@ export class GameState {
         if (newGameState.stones.length > 0) {
             newGameState.equipStone(newGameState.stones[0].seed);
         }
-        // console.log(`[GameState.createInitial] New game state created for ${playerName} with master seed ${masterSeed}.`);
-        // console.log(`  - Session Game Seed: ${newGameState.gameSeed}`);
-        // console.log(`  - Opponents Seed: ${newGameState.opponentsSeed}`);
-        // console.log(`  - Initial Stone Seed: ${initialStone.seed}`);
         return newGameState;
     }
 }
@@ -144,9 +166,10 @@ export class GameState {
 export function saveGame(gameStateInstance: GameState): boolean {
     console.log(`[SaveGame] Player: ${gameStateInstance.playerStats.name}. Attempting to save...`);
     try {
-        const gameStateJson = JSON.stringify(gameStateInstance);
+        const { opponentQueue, ...dataToSave } = gameStateInstance;
+        const gameStateJson = JSON.stringify(dataToSave);
         // console.log(`[SaveGame] Placeholder: Game state would be saved (e.g., to localStorage with key '${LOCAL_STORAGE_KEY}').`);
-        // Example: global.localStorage.setItem(LOCAL_STORAGE_KEY, gameStateJson); // Use global for Node if testing outside browser
+        // Example: global.localStorage.setItem(LOCAL_STORAGE_KEY, gameStateJson);
         return true;
     } catch (error) {
         // console.error("[SaveGame] Error saving game state:", error);
@@ -154,43 +177,51 @@ export function saveGame(gameStateInstance: GameState): boolean {
     }
 }
 
-export function loadGame(): GameState { // Always returns a GameState instance
-    // console.log("[LoadGame] Attempting to load game state from key:", LOCAL_STORAGE_KEY);
-    // Example: const savedGameStateJson = global.localStorage.getItem(LOCAL_STORAGE_KEY);
-    const savedGameStateJson: string | null = null;
-    // console.log("[LoadGame] Placeholder: Game state would be loaded from storage.");
+export function loadGame(): GameState {
+    console.log("[LoadGame] Attempting to load game state from key:", LOCAL_STORAGE_KEY);
+    // const savedGameStateJson = typeof localStorage !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
+    const savedGameStateJson: string | null = null; // Simulate no saved game for now
+    console.log("[LoadGame] Placeholder: Game state would be loaded.");
 
     if (savedGameStateJson) {
         try {
-            const loadedData: any = JSON.parse(savedGameStateJson); // Parse as any first
-            // console.log("[LoadGame] Successfully parsed saved data. Player:", loadedData.playerStats.name);
+            const loadedData = JSON.parse(savedGameStateJson) as any;
+            console.log("[LoadGame] Successfully parsed saved data. Player:", loadedData.playerStats.name);
 
             const reconstructedState = new GameState(loadedData.playerStats.name, loadedData.gameSeed);
-            reconstructedState.currency = loadedData.currency;
 
-            reconstructedState.stones = loadedData.stones.map((stoneData: any) => {
-                // Pass plain data object to constructor; constructor handles optional createdAt
-                return new StoneQualities(stoneData);
-            });
+            reconstructedState.currency = loadedData.currency || 0;
 
-            reconstructedState.equippedStoneId = loadedData.equippedStoneId;
-            reconstructedState.opponentsSeed = loadedData.opponentsSeed;
-            reconstructedState.opponents_index = loadedData.opponents_index;
+            if (loadedData.stones && Array.isArray(loadedData.stones)) {
+                reconstructedState.stones = loadedData.stones.map((stoneData: any) => {
+                    return new StoneQualities(stoneData); // Constructor handles optional createdAt
+                });
+            } else {
+                reconstructedState.stones = [];
+            }
+
+            reconstructedState.equippedStoneId = loadedData.equippedStoneId || null;
+
+            reconstructedState.opponentsSeed = loadedData.opponentsSeed || null;
+            reconstructedState.opponents_index = loadedData.opponents_index || 0;
+            // opponentQueue is intentionally left empty; it will be regenerated by getCurrentOpponent()
+
             reconstructedState.deck = loadedData.deck || [];
             reconstructedState.hand = loadedData.hand || [];
             reconstructedState.discardPile = loadedData.discardPile || [];
             reconstructedState.playerActiveCombatEffects = loadedData.playerActiveCombatEffects || [];
 
-            // console.log("[LoadGame] Game state reconstructed. Player:", reconstructedState.playerStats.name);
+            console.log("[LoadGame] Game state reconstructed. Player:", reconstructedState.playerStats.name);
+            reconstructedState.autoEquipNextAvailable();
             return reconstructedState;
 
         } catch (error) {
-            // console.error("[LoadGame] Error parsing or reconstructing saved game state:", error);
-            // console.log("[LoadGame] Creating a new game due to load error.");
+            console.error("[LoadGame] Error parsing or reconstructing saved game state:", error);
+            console.log("[LoadGame] Creating a new game due to load error.");
             return GameState.createInitial("Player (LoadFail)", Date.now() | 0);
         }
     } else {
-        // console.log("[LoadGame] No saved game found. Creating a new game.");
-        return GameState.createInitial("Player (NewGame)", Date.now() | 0);
+        console.log("[LoadGame] No saved game found. Creating a new game.");
+        return GameState.createInitial("Player (New)", Date.now() | 0);
     }
 }
