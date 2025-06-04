@@ -147,6 +147,13 @@ export class GameState {
         this.opponents_index++;
     }
 
+    public updateCurrency(amount: number): void {
+        this.currency += amount;
+        if (this.currency < 0) {
+            this.currency = 0; // Ensure currency doesn't go negative
+        }
+    }
+
     public static createInitial(playerName: string, masterSeed: number): GameState {
         const setupPrng = mulberry32(masterSeed);
         const sessionGameSeed = setupPrng();
