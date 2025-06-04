@@ -12,6 +12,7 @@ This project is developed using Node.js and TypeScript to ensure type safety and
 -   **Compile TypeScript**: `npm run build` (compiles `src` and `tests` to `dist`)
 -   **Compile TypeScript (Watch Mode)**: `npm run build:watch`
 -   **Run Tests**: `npm run test` (runs tests using Jest, which uses `ts-jest` to compile TypeScript in memory)
+-   **Run Game Demo/Entry Point**: `npm start`
 
 ---
 
