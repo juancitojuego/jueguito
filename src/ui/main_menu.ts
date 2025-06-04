@@ -156,6 +156,6 @@ export async function handleMainMenuAction(option: MainMenuOption | null, gameSt
             return false; // Signal to exit main loop
     }
     term.dim("\nPress any key to return to the main menu...");
-    await term.inputField({echo: false}).promise; // Wait for any key press
+    await term.waitFor('key').promise; // MODIFIED HERE
     return true; // Continue main loop
 }

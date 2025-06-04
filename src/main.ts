@@ -30,7 +30,7 @@ async function main() {
     }
 
     term.dim('Press any key to continue to main menu...\n');
-    await term.inputField({echo: false}).promise; // Corrected
+    await term.waitFor('key').promise; // MODIFIED HERE
 
     let keepRunning = true;
     while (keepRunning) {
@@ -40,7 +40,7 @@ async function main() {
         if (selectedOption === null) {
             term.clear();
             term.yellow('Menu selection cancelled. Press any key to show menu again, or CTRL+C to exit.\n');
-            await term.inputField({echo: false}).promise; // Corrected
+            await term.waitFor('key').promise; // MODIFIED HERE
             continue;
         }
 
