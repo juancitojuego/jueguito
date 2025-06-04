@@ -1,14 +1,16 @@
 // src/main.ts
 import { GameState } from './game_state';
-import { StoneQualities, calculateStonePower, createStone } from './stone_mechanics'; // Added createStone
-import { crackOpenStone, salvageStone } from './player_actions'; // Import new actions
+import { StoneQualities, calculateStonePower, createStone } from './stone_mechanics';
+import { crackOpenStone, salvageStone } from './player_actions'; // Import player actions
+import { startFight, getCurrentFightSession, clearCurrentFightSession } from './fight_service'; // Import combat functions
+import { FightSessionData } from './combat_interfaces'; // Import interface for type hinting
 
 function displayStoneDetails(stone: StoneQualities | null, label: string): void {
     console.log(`--- ${label} ---`);
     if (stone) {
         console.log(`  Name: ${stone.name}`);
         console.log(`  Seed: ${stone.seed}`);
-        // console.log(`  Color: ${stone.color}`); // Keep output concise for demo
+        // console.log(`  Color: ${stone.color}`);
         // console.log(`  Shape: ${stone.shape}`);
         console.log(`  Weight: ${stone.weight}`);
         console.log(`  Rarity: ${stone.rarity}`);
@@ -31,27 +33,70 @@ function listInventory(gameState: GameState): void {
     }
 }
 
+function displayFightSession(session: FightSessionData | null): void {
+    console.log("\n--- Current Fight Session ---");
+    if (session) {
+        console.log(`  Session ID: ${session.sessionId}`);
+        console.log(`  Round: ${session.currentRound}`);
+        console.log(`  Fight Over: ${session.isFightOver}`);
+        console.log("  Player:");
+        console.log(`    Stone ID: ${session.playerParticipantId} (Name: ${session.playerState.baseStone.name})`);
+        console.log(`    Health: ${session.playerState.currentHealth}/${session.playerState.maxHealth}`);
+        console.log(`    Power: ${session.playerState.currentPower.toFixed(2)} (Base: ${session.playerState.basePower.toFixed(2)})`);
+        console.log(`    Defense: ${session.playerState.currentDefense.toFixed(2)} (Base: ${session.playerState.baseDefense.toFixed(2)})`);
+        console.log("  Opponent:");
+        console.log(`    Stone ID: ${session.opponentParticipantId} (Name: ${session.opponentState.baseStone.name})`);
+        console.log(`    Health: ${session.opponentState.currentHealth}/${session.opponentState.maxHealth}`);
+        console.log(`    Power: ${session.opponentState.currentPower.toFixed(2)} (Base: ${session.opponentState.basePower.toFixed(2)})`);
+        console.log(`    Defense: ${session.opponentState.currentDefense.toFixed(2)} (Base: ${session.opponentState.baseDefense.toFixed(2)})`);
+        if (session.fightLog.length > 0) {
+            console.log("  Fight Log:");
+            session.fightLog.forEach(entry => console.log(`    - ${entry}`));
+        }
+    } else {
+        console.log("  No active fight session.");
+    }
+}
+
+
 function runGameDemo(): void {
-    console.log("Starting Stone Crafter Demo - Actions...\n");
+    console.log("Starting Stone Crafter Demo - Combat Initiation...\n");
 
     const masterSeed = Date.now();
-    let gameState = GameState.createInitial("ActionPlayer", masterSeed);
+    let gameState = GameState.createInitial("CombatPlayer", masterSeed);
     console.log(`Game initialized for player: ${gameState.playerStats.name}`);
-    console.log(`Game Seed: ${gameState.gameSeed}, Opponents Seed: ${gameState.opponentsSeed}`);
-    console.log(`Initial currency: ${gameState.currency}\n`);
+    console.log(`Game Seed: ${gameState.gameSeed}, Opponents Seed: ${gameState.opponentsSeed}\n`);
 
     let equippedStone = gameState.equippedStoneId ? gameState.getStoneById(gameState.equippedStoneId) : null;
-    displayStoneDetails(equippedStone, "Initial Equipped Stone");
-    listInventory(gameState);
+    displayStoneDetails(equippedStone, "Player's Initial Equipped Stone");
 
-    // --- Demonstrate Crack Open Stone ---
+    const currentOpponent = gameState.getCurrentOpponent();
+    displayStoneDetails(currentOpponent, "Current Opponent");
+    listInventory(gameState); // Show initial inventory and currency
+
+    // --- Demonstrate Start Fight ---
+    console.log("\n\n--- Action: Start Fight ---");
+    if (equippedStone && currentOpponent) {
+        const fightSession = startFight(equippedStone, currentOpponent, gameState);
+        if (fightSession) {
+            console.log(`Fight started! Session ID: ${fightSession.sessionId}`);
+            displayFightSession(getCurrentFightSession());
+        } else {
+            console.log("Could not start fight (startFight returned null).");
+        }
+    } else {
+        let reasons = [];
+        if (!equippedStone) reasons.push("Player's equipped stone missing");
+        if (!currentOpponent) reasons.push("Opponent missing");
+        console.log(`Cannot start fight: ${reasons.join(', ')}.`);
+    }
+
+    // Example of other actions (can be uncommented to see a fuller flow)
+    /*
     console.log("\n\n--- Action: Crack Open Stone ---");
-    if (gameState.equippedStoneId) {
+    if (gameState.equippedStoneId) { // Player stone might have changed if fight occurred and had consequences
         const crackResult = crackOpenStone(gameState);
         console.log(crackResult.message);
-        // crackResult.newStones.forEach(stone => { // Details of new stones are less critical than seeing overall state
-        //     displayStoneDetails(stone, "Newly Found Stone");
-        // });
     } else {
         console.log("Skipping Crack Open Stone demo: No stone equipped.");
     }
@@ -59,46 +104,28 @@ function runGameDemo(): void {
     equippedStone = gameState.equippedStoneId ? gameState.getStoneById(gameState.equippedStoneId) : null;
     displayStoneDetails(equippedStone, "Equipped Stone after Cracking");
 
-    // --- Demonstrate Salvage Stone ---
     console.log("\n\n--- Action: Salvage Stone ---");
-    // Ensure there's an equipped stone. If cracking resulted in no stones (highly unlikely), create one for salvage demo.
-    if (!gameState.equippedStoneId && gameState.stones.length === 0) {
-        console.log("Inventory empty. Adding a temporary stone to demonstrate salvage.");
-        const tempStone = createStone(Date.now() | 0); // Ensure it's an int
-        gameState.addStoneToInventory(tempStone);
-        gameState.equipStone(tempStone.seed); // Equip it directly
-        listInventory(gameState); // Show inventory with the temp stone
-        equippedStone = gameState.getStoneById(tempStone.seed); // Update equippedStone ref
-        displayStoneDetails(equippedStone, "Temporary Stone for Salvage Demo");
-    }
-
     if (gameState.equippedStoneId) {
         const initialCurrency = gameState.currency;
-        const stoneToSalvage = gameState.getStoneById(gameState.equippedStoneId!)!; // Non-null assertion as we checked
+        const stoneToSalvage = gameState.getStoneById(gameState.equippedStoneId!)!;
         console.log(`Attempting to salvage: ${stoneToSalvage.name} (Rarity: ${stoneToSalvage.rarity})`);
-
         const salvageResult = salvageStone(gameState);
-
         console.log(salvageResult.message);
         console.log(`Currency before: ${initialCurrency}, After: ${gameState.currency}, Gained: ${salvageResult.currencyGained}`);
     } else {
         console.log("Skipping Salvage Stone demo: No stone equipped.");
     }
     listInventory(gameState);
-    equippedStone = gameState.equippedStoneId ? gameState.getStoneById(gameState.equippedStoneId) : null;
-    displayStoneDetails(equippedStone, "Equipped Stone after Salvaging");
+    */
 
-    // --- Try to salvage again if inventory is empty (should fail gracefully) ---
-    if (!gameState.equippedStoneId) {
-        console.log("\n\n--- Action: Salvage Stone (on empty/no equipped) ---");
-        const salvageResultEmpty = salvageStone(gameState);
-        console.log(salvageResultEmpty.message);
-        console.log(`Currency: ${gameState.currency}`);
+    // Clear session at the end of the demo part related to fight
+    if (getCurrentFightSession()) {
+        clearCurrentFightSession();
+        console.log("\nFight session cleared for demo end.");
+        displayFightSession(getCurrentFightSession()); // Should show no active session
     }
-
 
     console.log("\n\n--- Game Demo End ---");
 }
 
-// Run the demo
 runGameDemo();
