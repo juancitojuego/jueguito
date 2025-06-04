@@ -1,5 +1,6 @@
 // src/player_actions.ts
-import { GameState, saveGame } from './game_state';
+import { GameState } from './game_state'; // GameState type is still needed
+import { GameStateManager } from './game_state_manager'; // Import the manager
 import { StoneQualities, createStone, generateNewStoneSeed, mulberry32 } from './stone_mechanics';
 
 export interface CrackOpenStoneResult {
@@ -22,7 +23,7 @@ export function crackOpenStone(gameState: GameState): CrackOpenStoneResult {
     // console.log(`Cracking open: ${equippedStone.name} (Seed: ${originalStoneSeed})`);
 
     // Remove the equipped stone from inventory.
-    gameState.removeStoneFromInventory(originalStoneSeed);
+    GameStateManager.removeStoneFromInventory(gameState, originalStoneSeed);
 
     const newStones: StoneQualities[] = [];
 
@@ -35,7 +36,7 @@ export function crackOpenStone(gameState: GameState): CrackOpenStoneResult {
     const stoneSeed1 = generateNewStoneSeed(deterministicActionPrng);
     const stone1 = createStone(stoneSeed1);
     newStones.push(stone1);
-    gameState.addStoneToInventory(stone1);
+    GameStateManager.addStoneToInventory(gameState, stone1);
     // console.log(`Found new stone: ${stone1.name} (Seed: ${stone1.seed})`);
 
     // 10% chance for a second new stone
@@ -43,7 +44,7 @@ export function crackOpenStone(gameState: GameState): CrackOpenStoneResult {
         const stoneSeed2 = generateNewStoneSeed(deterministicActionPrng);
         const stone2 = createStone(stoneSeed2);
         newStones.push(stone2);
-        gameState.addStoneToInventory(stone2);
+        GameStateManager.addStoneToInventory(gameState, stone2);
         // console.log(`Found a second new stone: ${stone2.name} (Seed: ${stone2.seed})`);
     }
 
@@ -52,13 +53,13 @@ export function crackOpenStone(gameState: GameState): CrackOpenStoneResult {
         const stoneSeed3 = generateNewStoneSeed(deterministicActionPrng);
         const stone3 = createStone(stoneSeed3);
         newStones.push(stone3);
-        gameState.addStoneToInventory(stone3);
+        GameStateManager.addStoneToInventory(gameState, stone3);
         // console.log(`Found a third new stone: ${stone3.name} (Seed: ${stone3.seed})`);
     }
 
     // Equip the first new stone generated
     if (newStones.length > 0) {
-        gameState.equipStone(newStones[0].seed);
+        GameStateManager.equipStone(gameState, newStones[0].seed);
         // console.log(`Equipped new stone: ${newStones[0].name}`);
     } else {
         // If somehow no new stones were created (e.g. if logic changes), ensure autoEquip handles it.
@@ -67,7 +68,7 @@ export function crackOpenStone(gameState: GameState): CrackOpenStoneResult {
         // If newStones[0] was added, equipStone overrides any prior auto-equip.
     }
 
-    saveGame(gameState); // Auto-save game state
+    GameStateManager.saveGame(gameState); // Auto-save game state
 
     let message = `Cracked open Stone ${originalStoneSeed}. Found ${newStones.length} new stone(s).`;
     if (newStones.length > 0) {
@@ -97,12 +98,12 @@ export function salvageStone(gameState: GameState): SalvageStoneResult {
     const currencyGained = equippedStone.rarity * 10;
     // console.log(`Salvaging: ${equippedStone.name} (Seed: ${equippedStone.seed}) for ${currencyGained} currency.`);
 
-    gameState.updateCurrency(currencyGained); // Use the method in GameState
+    GameStateManager.updateCurrency(gameState, currencyGained); // Use the manager method
 
     const originalStoneSeed = equippedStone.seed;
-    gameState.removeStoneFromInventory(originalStoneSeed); // This handles unequipping and auto-equipping next available
+    GameStateManager.removeStoneFromInventory(gameState, originalStoneSeed); // Use manager method
 
-    saveGame(gameState); // Auto-save game state
+    GameStateManager.saveGame(gameState); // Auto-save game state
 
     let message = `Salvaged Stone ${originalStoneSeed} for ${currencyGained} currency.`;
     const newlyEquippedStone = gameState.equippedStoneId ? gameState.getStoneById(gameState.equippedStoneId) : null;

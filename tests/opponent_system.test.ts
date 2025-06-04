@@ -1,6 +1,7 @@
 // tests/opponent_system.test.ts
 import { generateNewOpponentQueue } from '../src/opponent_system';
 import { GameState } from '../src/game_state';
+import { GameStateManager } from '../src/game_state_manager'; // Import GameStateManager
 import { StoneQualities, mulberry32, generateNewStoneSeed as generateStoneSeedUtil } from '../src/stone_mechanics';
 
 describe('Opponent System', () => {
@@ -45,67 +46,64 @@ describe('Opponent System', () => {
         });
 
         it('getCurrentOpponent() should generate a queue if one does not exist or is empty', () => {
-            expect(gameState.opponentQueue.length).toBe(0); // Initially empty
-            const opponent = gameState.getCurrentOpponent();
+            expect(gameState.opponentQueue.length).toBe(0);
+            const opponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
             expect(opponent).not.toBeNull();
             expect(opponent).toBeInstanceOf(StoneQualities);
-            expect(gameState.opponentQueue.length).toBe(100); // Default count
+            expect(gameState.opponentQueue.length).toBe(100);
             expect(gameState.opponents_index).toBe(0);
         });
 
         it('getCurrentOpponent() should return the opponent at the current index', () => {
-            const firstOpponent = gameState.getCurrentOpponent(); // Generates queue
+            const firstOpponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
             expect(firstOpponent).toEqual(gameState.opponentQueue[0]);
 
-            gameState.opponents_index = 5; // Manually set index for testing
-            const sixthOpponent = gameState.getCurrentOpponent();
+            gameState.opponents_index = 5;
+            const sixthOpponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
             expect(sixthOpponent).toEqual(gameState.opponentQueue[5]);
         });
 
         it('advanceOpponent() should increment opponents_index', () => {
-            gameState.getCurrentOpponent(); // Ensure queue is generated
+            GameStateManager.getCurrentOpponent(gameState); // Ensure queue is generated via manager
             expect(gameState.opponents_index).toBe(0);
-            gameState.advanceOpponent();
+            GameStateManager.advanceOpponent(gameState); // Use manager
             expect(gameState.opponents_index).toBe(1);
-            const nextOpponent = gameState.getCurrentOpponent();
+            const nextOpponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
             expect(nextOpponent).toEqual(gameState.opponentQueue[1]);
         });
 
         it('getCurrentOpponent() should regenerate the same queue if index is out of bounds (using same opponentsSeed)', () => {
-            gameState.getCurrentOpponent(); // Initial queue (default 100)
+            GameStateManager.getCurrentOpponent(gameState); // Use manager
             const firstQueueFirstOpponentSeed = gameState.opponentQueue[0].seed;
 
-            gameState.opponents_index = gameState.opponentQueue.length; // Go to end of queue
-            const newQueueOpponent = gameState.getCurrentOpponent(); // Should trigger regeneration
+            gameState.opponents_index = gameState.opponentQueue.length;
+            const newQueueOpponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
 
             expect(newQueueOpponent).not.toBeNull();
-            expect(gameState.opponents_index).toBe(0); // Index resets
-            expect(gameState.opponentQueue.length).toBe(100); // New queue with default count
-            // Regenerated queue should be identical because opponentsSeed hasn't changed
+            expect(gameState.opponents_index).toBe(0);
+            expect(gameState.opponentQueue.length).toBe(100);
             expect(newQueueOpponent!.seed).toBe(firstQueueFirstOpponentSeed);
         });
 
         it('getCurrentOpponent() should handle null opponentsSeed by creating one', () => {
-            gameState.opponentsSeed = null; // Simulate scenario where seed isn't set
-            gameState.opponentQueue = [];   // Reset queue to force regeneration path
-            const opponent = gameState.getCurrentOpponent();
+            gameState.opponentsSeed = null;
+            gameState.opponentQueue = [];
+            const opponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
             expect(opponent).not.toBeNull();
-            expect(gameState.opponentsSeed).not.toBeNull(); // A new seed should have been generated
+            expect(gameState.opponentsSeed).not.toBeNull();
             expect(gameState.opponentQueue.length).toBe(100);
         });
 
         it('getCurrentOpponent() should return null if queue generation results in an empty queue', () => {
-            // Mock generateNewOpponentQueue to return an empty array for this specific test case
             const opponentSystem = require('../src/opponent_system');
             const mockGenerateEmptyQueue = jest.spyOn(opponentSystem, 'generateNewOpponentQueue').mockReturnValueOnce([]);
 
-            // Force re-evaluation by clearing current queue (if any) and setting index to 0
             gameState.opponentQueue = [];
             gameState.opponents_index = 0;
 
-            const opponent = gameState.getCurrentOpponent();
+            const opponent = GameStateManager.getCurrentOpponent(gameState); // Use manager
             expect(opponent).toBeNull();
-            expect(mockGenerateEmptyQueue).toHaveBeenCalled(); // Ensure our mock was called
+            expect(mockGenerateEmptyQueue).toHaveBeenCalled();
         });
     });
 });

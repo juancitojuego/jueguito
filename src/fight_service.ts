@@ -1,5 +1,5 @@
 // src/fight_service.ts
-import { StoneQualities, calculateStonePower, createStone, generateNewStoneSeed, mulberry32 } from "./stone_mechanics"; // Added createStone, generateNewStoneSeed, mulberry32
+import { StoneQualities, calculateStonePower, createStone, generateNewStoneSeed, mulberry32 } from "./stone_mechanics";
 import {
     CombatParticipantState,
     ActiveEffect,
@@ -9,9 +9,10 @@ import {
     TargetType,
     CardPlayOutcome,
     RoundResolutionOutcome,
-    FightOutcome // Added import
+    FightOutcome
 } from "./combat_interfaces";
 import { GameState } from "./game_state";
+import { GameStateManager } from "./game_state_manager";
 
 export function createInitialCombatParticipantState(
     stone: StoneQualities,
@@ -33,31 +34,30 @@ export function createInitialCombatParticipantState(
 
 export function applyActiveEffectsToParticipant(
     participantState: CombatParticipantState,
-    activeEffects: ReadonlyArray<ActiveEffect>
+    effectsToApply: ReadonlyArray<ActiveEffect>
 ): CombatParticipantState {
-    const newState = { ...participantState };
-    newState.currentPower = newState.basePower;
-    newState.currentDefense = newState.baseDefense;
+    let calculatedPower = participantState.basePower;
+    let calculatedDefense = participantState.baseDefense;
+    let newCurrentHealth = participantState.currentHealth; // Health changes are cumulative from effects
 
-    activeEffects.forEach(effect => {
-        if (effect.powerBoost) newState.currentPower += effect.powerBoost;
-        if (effect.defenseBoost) newState.currentDefense += effect.defenseBoost;
-        if (effect.healAmount) {
-            newState.currentHealth += effect.healAmount;
-            if (newState.currentHealth > newState.maxHealth) {
-                newState.currentHealth = newState.maxHealth;
-            }
-        }
-    });
-    return newState;
+    for (const effect of effectsToApply) {
+        if (effect.powerBoost) calculatedPower += effect.powerBoost;
+        if (effect.defenseBoost) calculatedDefense += effect.defenseBoost;
+        if (effect.healAmount) newCurrentHealth += effect.healAmount;
+    }
+
+    if (newCurrentHealth > participantState.maxHealth) newCurrentHealth = participantState.maxHealth;
+    if (newCurrentHealth < 0) newCurrentHealth = 0; // Should not happen with heal, but good for damage later
+
+    return {
+        ...participantState,
+        currentPower: calculatedPower,
+        currentDefense: calculatedDefense,
+        currentHealth: newCurrentHealth,
+        // activeEffects: [...effectsToApply], // This was in the prompt, but applyActiveEffectsToParticipant should not manage the list itself, only calculate stats from it. The list is managed externally.
+    };
 }
 
-/**
- * Helper function to update durations of active effects and remove expired ones.
- * This function is internal to fight_service.ts (not exported).
- * @param activeEffects - The list of active effects to update.
- * @returns A new array with updated and filtered effects.
- */
 function updateAndCleanupActiveEffects(activeEffects: ReadonlyArray<ActiveEffect>): ActiveEffect[] {
     const updatedEffects: ActiveEffect[] = [];
     for (const effect of activeEffects) {
@@ -78,12 +78,12 @@ export function startFight(
     defaultHealth: number = 100
 ): FightSessionData | null {
     if (!playerStone || !opponentStone) {
-        console.error("[startFight] Player or opponent stone is missing.");
+        // console.error("[startFight] Player or opponent stone is missing.");
         return null;
     }
     const playerInitialState = createInitialCombatParticipantState(playerStone, defaultHealth);
     const opponentInitialState = createInitialCombatParticipantState(opponentStone, defaultHealth);
-    gameState.playerActiveCombatEffects = [];
+    GameStateManager.updatePlayerActiveCombatEffects(gameState, []); // Clear existing player effects via manager
     const newSession: FightSessionData = {
         sessionId: `fight_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         playerParticipantId: playerStone.seed,
@@ -111,25 +111,14 @@ export function startNewRound(
     fightSession: FightSessionData | null,
     gameState: GameState
 ): NewRoundInfo | null {
-    if (!fightSession || fightSession.isFightOver) {
-        return null;
-    }
+    if (!fightSession || fightSession.isFightOver) { return null; }
     fightSession.currentRound++;
     fightSession.fightLog.push(`Round ${fightSession.currentRound} begins.`);
-
-    fightSession.playerState = applyActiveEffectsToParticipant(
-        fightSession.playerState,
-        gameState.playerActiveCombatEffects
-    );
-    fightSession.opponentState = applyActiveEffectsToParticipant(
-        fightSession.opponentState,
-        fightSession.opponentState.activeEffects
-    );
-
-    const cardsForChoice = gameState.drawCardsFromDeck(3);
+    fightSession.playerState = applyActiveEffectsToParticipant(fightSession.playerState, gameState.playerActiveCombatEffects);
+    fightSession.opponentState = applyActiveEffectsToParticipant(fightSession.opponentState, fightSession.opponentState.activeEffects);
+    const cardsForChoice = GameStateManager.drawCardsFromDeck(gameState, 3);
     fightSession.currentRoundChoices = cardsForChoice;
     fightSession.fightLog.push(`Player draws ${cardsForChoice.length} card(s) for choice.`);
-
     return {
         roundNumber: fightSession.currentRound,
         cardsForChoice: cardsForChoice,
@@ -162,15 +151,13 @@ export function playerSelectsCard(
             message: `PlayerSelectsCard: Chosen card ID '${chosenCardId}' not found in current round choices.`,
         };
     }
-    gameState.addCardsToHand([chosenCard]);
+    GameStateManager.addCardsToHand(gameState, [chosenCard]);
     const discardedCards = fightSession.currentRoundChoices.filter(card => card.id !== chosenCardId);
     if (discardedCards.length > 0) {
-        gameState.addCardsToDiscardPile(discardedCards);
+        GameStateManager.addCardsToDiscardPile(gameState, discardedCards);
     }
-
-    fightSession.fightLog.push(`Player selected '${chosenCard.name}'. ${discardedCards.length} other card(s) discarded.`);
     fightSession.currentRoundChoices = [];
-
+    fightSession.fightLog.push(`Round ${fightSession.currentRound}: Player selected ${chosenCard.name}.`);
     return {
         success: true,
         message: `Player selected card: ${chosenCard.name}.`,
@@ -187,21 +174,17 @@ export function playerPlaysCard(
     if (!fightSession || fightSession.isFightOver) {
         return { success: false, message: "PlayerPlaysCard: No active fight session or fight is over." };
     }
-
     const cardToPlay = gameState.hand.find(card => card.id === cardId);
     if (!cardToPlay) {
         return { success: false, message: `PlayerPlaysCard: Card with ID '${cardId}' not found in hand.` };
     }
-
-    const playedCard = gameState.removeCardFromHand(cardId);
+    const playedCard = GameStateManager.removeCardFromHand(gameState, cardId);
     if (!playedCard) {
         return { success: false, message: `PlayerPlaysCard: Failed to remove card '${cardId}' from hand.` };
     }
-    gameState.addCardsToDiscardPile([playedCard]);
-
+    GameStateManager.addCardsToDiscardPile(gameState, [playedCard]);
     let targetState: CombatParticipantState;
     let existingEffectsList: ReadonlyArray<ActiveEffect>;
-
     if (targetType === TargetType.PLAYER) {
         targetState = fightSession.playerState;
         existingEffectsList = gameState.playerActiveCombatEffects;
@@ -209,22 +192,15 @@ export function playerPlaysCard(
         targetState = fightSession.opponentState;
         existingEffectsList = fightSession.opponentState.activeEffects;
     }
-
-    if (!cardToPlay.effect || typeof cardToPlay.effect.apply !== 'function') {
-        return { success: false, message: `Card ${cardToPlay.name} has no playable effect defined.` };
-    }
     const newEffectsListForTarget = cardToPlay.effect.apply(targetState, existingEffectsList);
-
     if (targetType === TargetType.PLAYER) {
-        gameState.updatePlayerActiveCombatEffects(newEffectsListForTarget);
+        GameStateManager.updatePlayerActiveCombatEffects(gameState, newEffectsListForTarget);
         fightSession.playerState = applyActiveEffectsToParticipant(fightSession.playerState, gameState.playerActiveCombatEffects);
     } else {
         fightSession.opponentState.activeEffects = [...newEffectsListForTarget];
         fightSession.opponentState = applyActiveEffectsToParticipant(fightSession.opponentState, fightSession.opponentState.activeEffects);
     }
-
     fightSession.fightLog.push(`Round ${fightSession.currentRound}: Player played ${cardToPlay.name} on ${targetType}.`);
-
     return {
         success: true,
         message: `Played ${cardToPlay.name} on ${targetType}.`,
@@ -237,23 +213,20 @@ export function resolveCurrentRound(
     fightSession: FightSessionData | null,
     gameState: GameState
 ): RoundResolutionOutcome | null {
-    if (!fightSession || fightSession.isFightOver) {
-        return null;
-    }
+    if (!fightSession || fightSession.isFightOver) { return null; }
 
     fightSession.playerState = applyActiveEffectsToParticipant(fightSession.playerState, gameState.playerActiveCombatEffects);
     fightSession.opponentState = applyActiveEffectsToParticipant(fightSession.opponentState, fightSession.opponentState.activeEffects);
 
     const player = fightSession.playerState;
     const opponent = fightSession.opponentState;
-
     const playerDamageDealt = Math.max(0, player.currentPower - opponent.currentDefense);
     const opponentDamageDealt = Math.max(0, opponent.currentPower - player.currentDefense);
 
     opponent.currentHealth = Math.max(0, opponent.currentHealth - playerDamageDealt);
     player.currentHealth = Math.max(0, player.currentHealth - opponentDamageDealt);
 
-    gameState.playerActiveCombatEffects = updateAndCleanupActiveEffects(gameState.playerActiveCombatEffects);
+    GameStateManager.updatePlayerActiveCombatEffects(gameState, updateAndCleanupActiveEffects(gameState.playerActiveCombatEffects));
     fightSession.playerState = applyActiveEffectsToParticipant(player, gameState.playerActiveCombatEffects);
 
     fightSession.opponentState.activeEffects = updateAndCleanupActiveEffects(opponent.activeEffects);
@@ -261,22 +234,18 @@ export function resolveCurrentRound(
 
     let winner: TargetType | 'tie' | undefined = undefined;
     if (player.currentHealth <= 0 && opponent.currentHealth <= 0) {
-        fightSession.isFightOver = true;
-        winner = 'tie';
+        fightSession.isFightOver = true; winner = 'tie';
     } else if (opponent.currentHealth <= 0) {
-        fightSession.isFightOver = true;
-        winner = TargetType.PLAYER;
+        fightSession.isFightOver = true; winner = TargetType.PLAYER;
     } else if (player.currentHealth <= 0) {
-        fightSession.isFightOver = true;
-        winner = TargetType.OPPONENT;
+        fightSession.isFightOver = true; winner = TargetType.OPPONENT;
     }
 
-    const logEntry = `Round ${fightSession.currentRound} resolved. Player dealt ${playerDamageDealt} dmg, Opponent dealt ${opponentDamageDealt} dmg. Player HP: ${player.currentHealth}, Opponent HP: ${opponent.currentHealth}.`;
+    const logEntry = `Round ${fightSession.currentRound} resolved. Player dealt ${playerDamageDealt}, Opponent dealt ${opponentDamageDealt}. Player HP: ${player.currentHealth}, Opponent HP: ${opponent.currentHealth}`;
     fightSession.fightLog.push(logEntry);
     if (fightSession.isFightOver) {
-        fightSession.fightLog.push(`Fight Over! Winner: ${winner || 'None determined'}.`);
+        fightSession.fightLog.push(`Fight Over! Winner: ${winner || 'None'}`);
     }
-
     return {
         playerDamageDealt,
         opponentDamageDealt,
@@ -294,57 +263,60 @@ export function endFight(
     winner: TargetType | 'tie' | undefined
 ): FightOutcome | null {
     if (!fightSession) {
-        console.error("[endFight] No fight session provided.");
+        // console.error("[endFight] No fight session provided.");
         return null;
     }
 
-    // Ensure fight is marked as over, even if winner wasn't determined by resolveCurrentRound (e.g. conceded)
-    if (!fightSession.isFightOver) {
-        if (winner === undefined) { // If winner is not passed, try to determine from health
-            if (fightSession.playerState.currentHealth <= 0 && fightSession.opponentState.currentHealth <= 0) winner = 'tie';
-            else if (fightSession.opponentState.currentHealth <= 0) winner = TargetType.PLAYER;
-            else if (fightSession.playerState.currentHealth <= 0) winner = TargetType.OPPONENT;
-            else { // Fight not actually over based on health, and no winner declared
-                console.warn("[endFight] Called on an ongoing fight without a declared winner.");
-                 return {
-                     playerStoneId: fightSession.playerParticipantId,
-                     opponentStoneId: fightSession.opponentParticipantId,
-                     winner: undefined, // Explicitly undefined
-                     fightLog: fightSession.fightLog,
-                     currencyChange: 0,
-                     stoneLostByPlayer: false,
-                     newStoneGainedByPlayer: undefined,
-                 };
-            }
+    if (!fightSession.isFightOver && winner === undefined) {
+        // console.warn("[endFight] Fight is not marked over and winner is undefined. Determining from healths.");
+        if (fightSession.playerState.currentHealth <= 0 && fightSession.opponentState.currentHealth <= 0) {
+            winner = 'tie';
+        } else if (fightSession.opponentState.currentHealth <= 0) {
+            winner = TargetType.PLAYER;
+        } else if (fightSession.playerState.currentHealth <= 0) {
+            winner = TargetType.OPPONENT;
+        } else {
+            // console.warn("[endFight] Called on an ongoing fight without a clear winner from healths.");
+             return { // Return a non-conclusive outcome if truly not over
+                 playerStoneId: fightSession.playerParticipantId,
+                 opponentStoneId: fightSession.opponentParticipantId,
+                 winner: undefined,
+                 fightLog: fightSession.fightLog,
+                 currencyChange: 0,
+                 stoneLostByPlayer: false,
+                 newStoneGainedByPlayer: undefined,
+            };
         }
-        fightSession.isFightOver = true; // Mark it as over
+        fightSession.isFightOver = true; // Mark it as over if determined here
     }
-
 
     let currencyChange = 0;
     let stoneLostByPlayer = false;
     let newStoneGainedByPlayer: StoneQualities | undefined = undefined;
+
     const fightOutcomeLog: string[] = [...fightSession.fightLog];
+
+    // Use a PRNG for rewards/penalties. Seed it for deterministic testing if needed.
+    // Using gameSeed + currentRound for some determinism based on game state.
+    const outcomePrng = mulberry32(gameState.gameSeed + fightSession.currentRound + fightSession.sessionId.length);
 
     if (winner === TargetType.PLAYER) {
         currencyChange = 10;
-        gameState.updateCurrency(currencyChange);
+        GameStateManager.updateCurrency(gameState, currencyChange);
         fightOutcomeLog.push(`Player wins! Gained ${currencyChange} currency.`);
 
-        const rewardPrng = mulberry32(gameState.gameSeed + fightSession.currentRound + fightSession.playerParticipantId + Date.now());
-        if ((rewardPrng() / 0xFFFFFFFF) < 0.10) {
-            const newStoneSeed = generateNewStoneSeed(rewardPrng);
+        if ((outcomePrng() / 0xFFFFFFFF) < 0.10) { // 10% chance for new stone
+            const newStoneSeed = generateNewStoneSeed(outcomePrng);
             newStoneGainedByPlayer = createStone(newStoneSeed);
-            gameState.addStoneToInventory(newStoneGainedByPlayer);
+            GameStateManager.addStoneToInventory(gameState, newStoneGainedByPlayer);
             fightOutcomeLog.push(`Player found a new stone: ${newStoneGainedByPlayer.name}!`);
         }
     } else if (winner === TargetType.OPPONENT) {
         fightOutcomeLog.push("Opponent wins.");
-        const penaltyPrng = mulberry32(gameState.gameSeed + fightSession.currentRound + fightSession.opponentParticipantId + Date.now());
-        if ((penaltyPrng() / 0xFFFFFFFF) < 0.15 && gameState.equippedStoneId !== null) {
-            const lostStone = gameState.getStoneById(gameState.equippedStoneId);
+        if (gameState.equippedStoneId !== null && (outcomePrng() / 0xFFFFFFFF) < 0.15) { // 15% chance to lose equipped stone
+            const lostStone = gameState.getStoneById(gameState.equippedStoneId); // getStoneById is on GameState instance
             if (lostStone) {
-                gameState.removeStoneFromInventory(gameState.equippedStoneId);
+                GameStateManager.removeStoneFromInventory(gameState, gameState.equippedStoneId);
                 stoneLostByPlayer = true;
                 fightOutcomeLog.push(`Player lost their equipped stone: ${lostStone.name}!`);
             }
