@@ -1,26 +1,30 @@
 {
   "name": "stone-crafter",
-  "version": "1.0.0",
-  "description": "A terminal game about procedurally generated stones.",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A terminal-based gacha game.",
   "main": "dist/index.js",
-  "bin": {
-    "stone-crafter": "dist/index.js"
-  },
   "scripts": {
-    "build": "./node_modules/.bin/tsc",
-    "start": "node dist/index.js",
-    "dev": "./node_modules/.bin/tsc -w & nodemon dist/index.js",
-    "prepublishOnly": "npm run build"
+    "build": "tsc",
+    "start": "npm run build && node dist/index.js",
+    "dev": "ts-node src/index.ts"
   },
+  "keywords": [
+    "gacha",
+    "terminal",
+    "game",
+    "ink"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "blessed": "^0.1.81",
-    "chalk": "^4.1.2",
-    "yargs": "^17.7.2"
+    "ink": "^5.0.0",
+    "react": "^18.3.1"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0",
-    "@types/blessed": "^0.1.25"
+    "@types/react": "^18.3.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
   },
   "engines": {
     "node": ">=18"
