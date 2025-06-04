@@ -1,6 +1,6 @@
 // tests/game_state_manager.test.ts
 import { GameState } from '../src/game_state';
-import { GameStateManager, LOCAL_STORAGE_KEY_MGR } from '../src/game_state_manager';
+import { GameStateManager, SAVE_FILE_NAME } from '../src/game_state_manager'; // Corrected import
 import { StoneQualities, createStone, mulberry32, generateNewStoneSeed } from '../src/stone_mechanics';
 import { Card, CardType, ActiveEffect } from '../src/combat_interfaces';
 import * as CardConfig from '../src/config/cards';

@@ -1,12 +1,8 @@
 // src/main.ts
 import { GameState } from './game_state';
 import { GameStateManager } from './game_state_manager';
-import { initializeTerminal, terminateApp, term } from './ui'; // Assuming ui/index.ts exports these
+import { initializeTerminal, terminateApp, term } from './ui';
 import { showMainMenu, handleMainMenuAction, MainMenuOption } from './ui/main_menu';
-import { Card, CombatParticipantState, ActiveEffect } from './combat_interfaces'; // For placeholder effect assignment
-import { assignPlaceholderEffectsToCardsIfNecessary } from './ui/ui_helpers'; // Centralized effect assignment
-
-// Display helper functions are now in ui_helpers.ts and called from main_menu.ts actions.
 
 async function main() {
     initializeTerminal();
@@ -23,35 +19,34 @@ async function main() {
         } else {
             term.green(`Game loaded for player: ${gameStateRef.current.playerStats.name}\n`);
         }
-        // Ensure deck is ready and cards have effects after initial load/creation
-        assignPlaceholderEffectsToCardsIfNecessary(gameStateRef.current);
+        if (gameStateRef.current && (gameStateRef.current.deck.length === 0 && gameStateRef.current.hand.length === 0 && gameStateRef.current.discardPile.length === 0)) {
+            GameStateManager.generateDeck(gameStateRef.current);
+            term.dim('Initial deck generated for the game session.\n');
+        }
     } else {
-        // This case should ideally not be reached if loadGame always returns a GameState
         term.red("Critical error: GameState is null after load/new game attempt. Exiting.\n");
         terminateApp(1);
-        return; // Ensure function exits if terminateApp doesn't stop it immediately
+        return;
     }
 
     term.dim('Press any key to continue to main menu...\n');
-    // Wait for a key press, but without an input field that might capture the key
-    await term.waitForKey().promise;
-
+    await term.inputField({echo: false}).promise; // Corrected
 
     let keepRunning = true;
     while (keepRunning) {
-        term.clear(); // Clear screen before showing menu
+        term.clear();
         const selectedOption = await showMainMenu();
 
         if (selectedOption === null) {
             term.clear();
             term.yellow('Menu selection cancelled. Press any key to show menu again, or CTRL+C to exit.\n');
-            await term.waitForKey().promise;
+            await term.inputField({echo: false}).promise; // Corrected
             continue;
         }
 
         keepRunning = await handleMainMenuAction(selectedOption, gameStateRef);
 
-        if (!keepRunning) { // If handleMainMenuAction returned false (Exit option)
+        if (!keepRunning) {
             break;
         }
     }
@@ -59,25 +54,24 @@ async function main() {
     terminateApp();
 }
 
-// Global error handling
 process.on('unhandledRejection', (reason, promise) => {
-    term.hideCursor(false); // Ensure cursor is visible
+    term.hideCursor(false);
     term.styleReset();
     term.red(`\n\nUnhandled Rejection at: ${promise}\nReason: ${reason}\n\n`);
-    console.error(reason); // Also log the full error to stderr
-    terminateApp(1); // Terminate after showing error
+    console.error(reason);
+    terminateApp(1);
 });
 
 process.on('uncaughtException', (err, origin) => {
-    term.hideCursor(false); // Ensure cursor is visible
+    term.hideCursor(false);
     term.styleReset();
     term.red(`\n\nUncaught Exception:\nOrigin: ${origin}\nError: ${err.message}\n\n`);
     console.error(err.stack);
-    terminateApp(1); // Terminate after showing error
+    terminateApp(1);
 });
 
 main().catch(error => {
-    term.hideCursor(false); // Ensure cursor is visible in case of error during main()
+    term.hideCursor(false);
     term.styleReset();
     term.red.bold(`\n\nAn unexpected error occurred in main execution: ${error}\n`);
     if (error instanceof Error && error.stack) {

@@ -15,7 +15,6 @@ export interface ActiveEffect {
     description: string;     // Description of what the effect does (e.g., "+5 Power")
     remainingDuration: number; // How many more rounds the effect will last
     sourceCardId?: string;   // Optional: ID of the card that applied this effect
-
     powerBoost?: number;
     defenseBoost?: number;
     healAmount?: number;    // Applied by applyActiveEffectsToParticipant if duration is 1, then effect is removed
@@ -29,33 +28,24 @@ export interface CombatParticipantState {
     readonly baseDefense: number;
     currentPower: number;
     currentDefense: number;
-    activeEffects: ActiveEffect[]; // This list is what applyActiveEffectsToParticipant uses to calculate current stats
+    activeEffects: ActiveEffect[];
 }
 
 export interface Effect {
-    id: string; // Identifier for the *type* of effect this card applies (e.g., "power_boost_sml")
-    description: string; // Detailed description of the card's effect for UI or logs
-    /**
-     * Applies the card's effect to a target.
-     * @param target The current state of the target participant *before* this card's specific effect is added.
-     * @param existingEffects The target's current list of active effects *before* this card's specific effect is added.
-     * @returns A new array of ActiveEffects that should be on the target.
-     *          This array should include any new effect instance created by this card,
-     *          plus all existingEffects that are not meant to be removed or replaced by this card's effect.
-     */
+    id: string; // Identifier for the *type* of effect this card applies
+    description: string; // Detailed description of the card's effect
     apply: (
         target: CombatParticipantState,
-        existingEffects: ReadonlyArray<ActiveEffect>
-        // Potential future extension: caster?: CombatParticipantState
-    ) => ActiveEffect[];
+        existingEffects: ReadonlyArray<ActiveEffect> // Input can be readonly
+    ) => ActiveEffect[]; // Output MUST be mutable ActiveEffect[]
 }
 
 export interface Card {
-    id: string;          // Unique card identifier (e.g., "card_001")
+    id: string;
     name: string;
     type: CardType;
-    description: string; // Player-facing description of the card's action
-    effect: Effect;      // The effect object defining the card's behavior
+    description: string;
+    effect: Effect;
 }
 
 export interface FightSessionData {
@@ -102,9 +92,21 @@ export interface RoundResolutionOutcome {
 export interface FightOutcome {
     playerStoneId: number;
     opponentStoneId: number;
-    winner?: TargetType | 'tie'; // Winner can be undefined if fight ended prematurely or by other means
+    winner?: TargetType | 'tie';
     fightLog: string[];
     currencyChange: number;
     stoneLostByPlayer: boolean;
     newStoneGainedByPlayer?: StoneQualities;
+}
+
+// Added for use in GameStateManager.loadGame for casting stoneData from JSON
+export interface IStoneQualities {
+    seed: number;
+    name: string;
+    color: string;
+    shape: string;
+    weight: number;
+    rarity: number;
+    magic: number;
+    createdAt: number;
 }

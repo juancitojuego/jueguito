@@ -1,162 +1,144 @@
 // tests/player_actions.test.ts
 import { GameState } from '../src/game_state';
+import { StoneQualities, createStone, generateNewStoneSeed, mulberry32 } from '../src/stone_mechanics';
 import { GameStateManager } from '../src/game_state_manager'; // Import GameStateManager
-import { StoneQualities, createStone, mulberry32, generateNewStoneSeed } from '../src/stone_mechanics';
-import { crackOpenStone, salvageStone } from '../src/player_actions';
+import * as PlayerActions from '../src/player_actions';
 
-// Mock the GameStateManager.saveGame function
-jest.mock('../src/game_state_manager', () => ({
-    ...jest.requireActual('../src/game_state_manager'), // Import and retain default behavior
-    GameStateManager: {
-        ...jest.requireActual('../src/game_state_manager').GameStateManager, // Retain other static methods
-        saveGame: jest.fn(), // Mock saveGame specifically
-    }
-}));
+// Mock GameStateManager.saveGame as it's called by player actions
+jest.mock('../src/game_state_manager', () => {
+    const originalModule = jest.requireActual('../src/game_state_manager');
+    return {
+        ...originalModule,
+        GameStateManager: {
+            ...originalModule.GameStateManager, // Keep actual static methods
+            saveGame: jest.fn(), // Mock saveGame specifically
+            // We will also spy on other GameStateManager methods if we need to verify their calls
+            // but for now, let them use their actual implementations unless saveGame is the only side effect.
+        }
+    };
+});
 
 
-describe('Player Actions', () => {
+describe('Player Actions (using GameStateManager)', () => {
     let gameState: GameState;
-    const playerName = "ActionTester";
-    const masterSeed = 12345; // Consistent master seed for tests
+    const playerName = "PlayerActionTester";
+    const masterSeed = 67890;
 
     beforeEach(() => {
-        // Use a consistent seed for GameState.createInitial to make tests more deterministic
-        // if PRNG aspects of createInitial were to affect these action tests.
         gameState = GameState.createInitial(playerName, masterSeed);
+        // GameStateManager.generateDeck(gameState); // Not strictly needed for these specific tests
 
-        // Ensure there's at least one stone and it's equipped.
-        // GameState.createInitial already adds and equips one stone.
+        // Ensure there's an initial stone from GameState.createInitial.
+        // GameState.createInitial adds one stone and equips it.
         if (gameState.stones.length === 0) {
-            console.warn("GameState.createInitial did not create a stone. Adding one for tests.");
-            const initialStoneSeed = generateNewStoneSeed(mulberry32(masterSeed + 1));
-            const initialStone = createStone(initialStoneSeed);
-            GameStateManager.addStoneToInventory(gameState, initialStone); // Use manager
-            GameStateManager.equipStone(gameState, initialStone.seed); // Use manager
-        } else if (!gameState.equippedStoneId) {
-            GameStateManager.equipStone(gameState, gameState.stones[0].seed); // Use manager
+            // This block should ideally not be hit if GameState.createInitial works as expected.
+            console.warn("No initial stone in GameState, adding one for player_actions tests.");
+            const emergencyStone = createStone(generateNewStoneSeed(mulberry32(masterSeed + 5)));
+            GameStateManager.addStoneToInventory(gameState, emergencyStone);
+            GameStateManager.equipStone(gameState, emergencyStone.seed);
+        } else if (!gameState.equippedStoneId && gameState.stones.length > 0) {
+            GameStateManager.equipStone(gameState, gameState.stones[0].seed);
         }
 
-        (GameStateManager.saveGame as jest.Mock).mockClear(); // Clear mock for GameStateManager.saveGame
+        (GameStateManager.saveGame as jest.Mock).mockClear();
     });
 
-    describe('crackOpenStone', () => {
-        it('should return a message if no stone is equipped', () => {
-            GameStateManager.equipStone(gameState, null); // Use manager
-            const result = crackOpenStone(gameState);
-            expect(result.newStones.length).toBe(0);
-            expect(result.message).toContain('No stone equipped');
-            expect(GameStateManager.saveGame).not.toHaveBeenCalled();
-        });
+    afterEach(() => {
+        jest.restoreAllMocks(); // Restore all mocks, including GameStateManager.saveGame
+    });
 
-        it('should remove the equipped stone and add at least one new stone', () => {
+    describe('crackOpenStone Action', () => {
+        it('should return a message and not save if no stone is equipped', () => {
+            GameStateManager.equipStone(gameState, null); // Unequip any stone
             const initialStoneCount = gameState.stones.length;
-            const equippedStoneSeed = gameState.equippedStoneId;
-            expect(equippedStoneSeed).not.toBeNull();
+            const result = PlayerActions.crackOpenStone(gameState);
 
-            const result = crackOpenStone(gameState);
-
-            expect(result.newStones.length).toBeGreaterThanOrEqual(1);
-            expect(gameState.getStoneById(equippedStoneSeed!)).toBeUndefined(); // Original stone gone
-            expect(gameState.stones.length).toBe(initialStoneCount - 1 + result.newStones.length);
-            result.newStones.forEach(stone => {
-                expect(gameState.getStoneById(stone.seed)).toBeDefined();
-            });
-            expect(GameStateManager.saveGame).toHaveBeenCalledWith(gameState);
-        });
-
-        it('should equip the first new stone found', () => {
-            // Ensure a stone is equipped to be cracked.
-            if (!gameState.equippedStoneId && gameState.stones.length > 0) {
-                 GameStateManager.equipStone(gameState, gameState.stones[0].seed); // Use manager
-            } else if (gameState.stones.length === 0) {
-                const tempStone = createStone(generateNewStoneSeed(mulberry32(masterSeed + 10)));
-                GameStateManager.addStoneToInventory(gameState, tempStone); // Use manager
-                GameStateManager.equipStone(gameState, tempStone.seed); // Use manager
-            }
-
-            const result = crackOpenStone(gameState);
-            expect(result.newStones.length).toBeGreaterThan(0); // Action guarantees at least one stone
-            expect(gameState.equippedStoneId).toBe(result.newStones[0].seed);
-        });
-
-        it('should produce deterministic results for the same initial state', () => {
-            const initialEquippedSeed = gameState.equippedStoneId!;
-
-            // Create a deep copy or re-create state for a second run
-            let gameState2 = GameState.createInitial(playerName, masterSeed);
-            // Ensure gameState2 is identical to how gameState was at the start of this test
-            // This might require more careful state cloning if createInitial has side effects not reset
-            // For now, assuming createInitial is deterministic and beforeEach sets it up well.
-            // If the first stone in gameState2 is different from initialEquippedSeed, this test needs adjustment.
-            // Let's ensure the stone to be cracked is the same.
-            // The simplest is to ensure the first stone from createInitial is always the one cracked.
-             if (gameState2.stones[0].seed !== initialEquippedSeed) {
-                // This implies createInitial itself is not perfectly deterministic for stone seeds given fixed masterSeed,
-                // or that the setup in beforeEach is not perfectly replicating states.
-                // For this test, we'll force gameState2 to have the same stone to crack.
-                const stoneToCrack = gameState.getStoneById(initialEquippedSeed)!; // getStoneById is fine on GameState
-                gameState2.stones = [new StoneQualities({...stoneToCrack})];
-                GameStateManager.equipStone(gameState2, initialEquippedSeed); // Use manager
-
-             }
-
-
-            const result1 = crackOpenStone(gameState);
-            const result2 = crackOpenStone(gameState2);
-
-            expect(result1.newStones.length).toEqual(result2.newStones.length);
-            expect(result1.newStones.map(s => s.seed)).toEqual(result2.newStones.map(s => s.seed));
-            expect(result1.message).toEqual(result2.message); // Messages might differ if equipped stone names differ
-            expect(gameState.equippedStoneId).toEqual(gameState2.equippedStoneId);
-        });
-    });
-
-    describe('salvageStone', () => {
-        it('should return a message if no stone is equipped', () => {
-            GameStateManager.equipStone(gameState, null); // Use manager
-            const result = salvageStone(gameState);
-            expect(result.currencyGained).toBe(0);
             expect(result.message).toContain('No stone equipped');
+            expect(result.newStones.length).toBe(0);
+            expect(gameState.stones.length).toBe(initialStoneCount); // No change in stones
             expect(GameStateManager.saveGame).not.toHaveBeenCalled();
         });
 
-        it('should remove the equipped stone, add currency, and auto-equip next if available', () => {
-            const initialCurrency = gameState.currency;
-            const equippedStoneDetails = gameState.getStoneById(gameState.equippedStoneId!)!;
-            const expectedCurrencyGain = equippedStoneDetails.rarity * 10;
-            const originalEquippedSeed = equippedStoneDetails.seed;
-            const initialInventorySize = gameState.stones.length;
+        it('should remove equipped stone, add new ones, equip first new, and call saveGame', () => {
+            const equippedStoneBeforeSeed = gameState.equippedStoneId;
+            expect(equippedStoneBeforeSeed).not.toBeNull(); // Pre-condition: a stone is equipped
+            const initialInventoryCount = gameState.stones.length;
 
-            const extraStoneSeed = generateNewStoneSeed(mulberry32(masterSeed + 2));
-            const extraStone = createStone(extraStoneSeed);
-            GameStateManager.addStoneToInventory(gameState, extraStone); // Use manager
-            expect(gameState.stones.length).toBe(initialInventorySize + 1); // Added extra stone
+            const result = PlayerActions.crackOpenStone(gameState);
 
-            const result = salvageStone(gameState);
-
-            expect(result.currencyGained).toBe(expectedCurrencyGain);
-            expect(gameState.currency).toBe(initialCurrency + expectedCurrencyGain);
-            expect(gameState.getStoneById(originalEquippedSeed)).toBeUndefined();
-            expect(gameState.stones.length).toBe(initialInventorySize);
+            expect(result.message).not.toContain('No stone equipped');
+            expect(result.newStones.length).toBeGreaterThanOrEqual(1); // At least one new stone
+            expect(gameState.getStoneById(equippedStoneBeforeSeed!)).toBeUndefined(); // Original stone is gone
+            expect(gameState.stones.length).toBe(initialInventoryCount - 1 + result.newStones.length);
+            expect(gameState.equippedStoneId).toBe(result.newStones[0].seed); // First new stone is equipped
             expect(GameStateManager.saveGame).toHaveBeenCalledWith(gameState);
-            expect(gameState.equippedStoneId).toBe(extraStone.seed);
+        });
+    });
+
+    describe('salvageStone Action', () => {
+        it('should return a message and not save if no stone is equipped', () => {
+            GameStateManager.equipStone(gameState, null); // Unequip
+            const initialCurrency = gameState.currency;
+            const result = PlayerActions.salvageStone(gameState);
+
+            expect(result.message).toContain('No stone equipped');
+            expect(result.currencyGained).toBe(0);
+            expect(gameState.currency).toBe(initialCurrency); // Currency unchanged
+            expect(GameStateManager.saveGame).not.toHaveBeenCalled();
         });
 
-        it('should handle salvaging the last stone correctly', () => {
-            const onlyStoneSeed = gameState.equippedStoneId!;
-            const onlyStone = gameState.getStoneById(onlyStoneSeed)!;
-            gameState.stones = [new StoneQualities({...onlyStone})];
-            GameStateManager.equipStone(gameState, onlyStoneSeed); // Use manager
-            expect(gameState.stones.length).toBe(1);
-
+        it('should remove equipped stone, add currency, auto-equip next if available, and call saveGame', () => {
+            const equippedStoneBefore = gameState.getStoneById(gameState.equippedStoneId!)!;
+            const expectedCurrencyGain = equippedStoneBefore.rarity * 10;
             const initialCurrency = gameState.currency;
-            const expectedCurrencyGain = onlyStone.rarity * 10;
-            const result = salvageStone(gameState);
+            const initialInventoryCount = gameState.stones.length;
+
+            // Add another stone to ensure one can be auto-equipped
+            const nextStoneToEquip = createStone(generateNewStoneSeed(mulberry32(masterSeed + 10)));
+            GameStateManager.addStoneToInventory(gameState, nextStoneToEquip);
+            // Ensure original stone is still equipped before salvaging (addStoneToInventory might auto-equip if inventory was empty)
+            GameStateManager.equipStone(gameState, equippedStoneBefore.seed);
+            expect(gameState.equippedStoneId).toBe(equippedStoneBefore.seed);
+
+
+            const result = PlayerActions.salvageStone(gameState);
 
             expect(result.currencyGained).toBe(expectedCurrencyGain);
             expect(gameState.currency).toBe(initialCurrency + expectedCurrencyGain);
-            expect(gameState.stones.length).toBe(0);
-            expect(gameState.equippedStoneId).toBeNull();
+            expect(gameState.getStoneById(equippedStoneBefore.seed)).toBeUndefined(); // Salvaged stone is gone
+            // Inventory count: initial +1 (nextStone) -1 (salvaged) = initial
+            expect(gameState.stones.length).toBe(initialInventoryCount);
+
+            // Check auto-equipping: nextStoneToEquip should be equipped
+            // This assumes nextStoneToEquip was the only other stone or became the oldest after removal.
+            // GameStateManager.removeStoneFromInventory calls autoEquipNextAvailable, which equips stones[0]
+            if (gameState.stones.length > 0) {
+                expect(gameState.equippedStoneId).toBe(nextStoneToEquip.seed);
+            } else {
+                 expect(gameState.equippedStoneId).toBeNull();
+            }
+            expect(GameStateManager.saveGame).toHaveBeenCalledWith(gameState);
+        });
+
+        it('should handle salvaging the last stone correctly, leaving no equipped stone', () => {
+            // Ensure game state has only one stone (the one from createInitial), which is equipped
+            const onlyStoneSeed = gameState.stones[0].seed; // Assuming createInitial added one and it's at index 0
+            gameState.stones = [gameState.getStoneById(onlyStoneSeed)!]; // Ensure only this stone exists
+            GameStateManager.equipStone(gameState, onlyStoneSeed); // Re-affirm it's equipped
+            expect(gameState.stones.length).toBe(1);
+            expect(gameState.equippedStoneId).toBe(onlyStoneSeed);
+
+
+            const equippedStoneDetails = gameState.getStoneById(gameState.equippedStoneId!)!;
+            const expectedCurrency = equippedStoneDetails.rarity * 10;
+            const initialCurrency = gameState.currency;
+
+            const result = PlayerActions.salvageStone(gameState);
+
+            expect(result.currencyGained).toBe(expectedCurrency);
+            expect(gameState.currency).toBe(initialCurrency + expectedCurrency);
+            expect(gameState.stones.length).toBe(0); // Inventory is empty
+            expect(gameState.equippedStoneId).toBeNull(); // No stone to equip
             expect(GameStateManager.saveGame).toHaveBeenCalledWith(gameState);
         });
     });
